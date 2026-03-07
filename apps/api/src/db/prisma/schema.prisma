@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  name         String?
+  role         String        @default("user") // 'admin' | 'user'
+  webhookToken String        @unique @default(cuid())
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  accounts     Account[]
+  subscription Subscription?
+}
+
+model Subscription {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id])
+  plan           String    @default("monthly")
+  status         String    @default("active")
+  monthlyFeeUsd  Float     @default(0)
+  performancePct Float     @default(0)
+  startDate      DateTime  @default(now())
+  nextBillingAt  DateTime?
+}
+
+model Account {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  name          String
+  brokerType    String         @default("tradovate")
+  tradovateId   String         @unique
+  tradovateSpec String
+  environment   String         @default("demo")
+  accessToken   String?
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  isActive      Boolean        @default(true)
+  balance       Float          @default(0)
+  createdAt     DateTime       @default(now())
+  tradingRules  TradingRules?
+  ordersPlaced  Order[]
+  dailyStats    DailyStat[]
+  masterGroups  CopyGroup[]    @relation("MasterAccount")
+  followerLinks GroupFollower[]
+}
+
+model CopyGroup {
+  id               String         @id @default(cuid())
+  userId           String
+  name             String
+  masterAccountId  String
+  master           Account        @relation("MasterAccount", fields: [masterAccountId], references: [id])
+  isActive         Boolean        @default(true)
+  distributionMode String         @default("all")
+  batchSize        Int            @default(4)
+  rotateIndex      Int            @default(0)
+  followers        GroupFollower[]
+  createdAt        DateTime       @default(now())
+}
+
+model GroupFollower {
+  id                String    @id @default(cuid())
+  groupId           String
+  group             CopyGroup @relation(fields: [groupId], references: [id])
+  followerAccountId String
+  follower          Account   @relation(fields: [followerAccountId], references: [id])
+  riskPct           Float     @default(1.0)
+  isActive          Boolean   @default(true)
+  rotateOrder       Int       @default(0)
+  lastOrderAt       DateTime?
+}
+
+model TradingRules {
+  id                    String   @id @default(cuid())
+  accountId             String   @unique
+  account               Account  @relation(fields: [accountId], references: [id])
+  accountStage          String   @default("challenge")
+  riskMode              String   @default("fixed_usd")
+  fixedRiskAmount       Float    @default(650)
+  maxEntriesPerDay      Int      @default(3)
+  allowedDays           String[] @default(["MON", "TUE", "WED", "THU", "FRI"])
+  startTime             String   @default("08:00")
+  endTime               String   @default("15:30")
+  maxDrawdownPct        Float    @default(5.0)
+  reduceRiskAfterLosses Boolean  @default(true)
+  reduceRiskFactor      Float    @default(0.5)
+  maxConsecutiveLosses  Int      @default(3)
+  pauseAfterMaxLosses   Boolean  @default(true)
+}
+
+model Signal {
+  id           String   @id @default(cuid())
+  userId       String
+  source       String   @default("tradingview")
+  symbol       String
+  action       String
+  price        Float
+  contracts    Int?
+  strategy     String?
+  timeframe    String?
+  rawPayload   Json
+  status       String   @default("received")
+  rejectReason String?
+  createdAt    DateTime @default(now())
+  orders       Order[]
+}
+
+model Order {
+  id               String   @id @default(cuid())
+  signalId         String
+  signal           Signal   @relation(fields: [signalId], references: [id])
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  symbol           String
+  side             String
+  qty              Int
+  orderType        String   @default("Market")
+  status           String   @default("pending")
+  tradovateOrderId String?
+  fillPrice        Float?
+  skipReason       String?
+  errorMsg         String?
+  retryCount       Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model DailyStat {
+  id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id])
+  date              DateTime
+  entriesCount      Int      @default(0)
+  pnl               Float    @default(0)
+  winCount          Int      @default(0)
+  lossCount         Int      @default(0)
+  drawdownPct       Float    @default(0)
+  consecutiveLosses Int      @default(0)
+  isPaused          Boolean  @default(false)
+
+  @@unique([accountId, date])
+}
