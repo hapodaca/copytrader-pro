@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router } from 'express'
 
+const router = Router()
 // TODO v1.3 — Audit log
-export const auditRouter = Router();
+export default router

@@ -1,184 +1,111 @@
-import WebSocket from 'ws';
-import { EventEmitter } from 'events';
-import { getBaseUrl, tokenManager } from './auth';
-import { BrokerAccount } from '../BrokerAdapter';
-import prisma from '../../../db/client';
+import WebSocket from 'ws'
+import { Account } from '@prisma/client'
+import { prisma } from '../../../db/client'
+import { BrokerEvent } from '../BrokerAdapter'
+import { ensureValidToken, getBaseUrl } from './auth'
 
-interface WSConnection {
-  ws: WebSocket;
-  heartbeatInterval: NodeJS.Timeout;
-  reconnectAttempts: number;
-  accountId: string;
+const WS_URLS = {
+  demo: 'wss://demo.tradovateapi.com/v1/websocket',
+  live: 'wss://live.tradovateapi.com/v1/websocket',
 }
 
-export class TradovateWebSocketManager extends EventEmitter {
-  private connections: Map<string, WSConnection> = new Map();
-  private maxReconnectDelay = 30000;
+type EventCallback = (event: BrokerEvent) => void
 
-  async connect(account: BrokerAccount): Promise<void> {
-    if (this.connections.has(account.id)) {
-      return;
-    }
+export class TradovateWebSocketManager {
+  private connections = new Map<string, WebSocket>()
+  private callbacks = new Map<string, EventCallback>()
+  private reconnectAttempts = new Map<string, number>()
 
-    const wsUrl = account.environment === 'live'
-      ? 'wss://live.tradovateapi.com/v1/websocket'
-      : 'wss://demo.tradovateapi.com/v1/websocket';
-
-    await this.createConnection(account, wsUrl, 0);
+  async connect(account: Account, cb: EventCallback): Promise<void> {
+    this.callbacks.set(account.id, cb)
+    await this.createConnection(account)
   }
 
-  private async createConnection(account: BrokerAccount, wsUrl: string, reconnectAttempts: number): Promise<void> {
-    const ws = new WebSocket(wsUrl);
+  private async createConnection(account: Account): Promise<void> {
+    const token = await ensureValidToken(account)
+    const wsUrl = account.environment === 'live' ? WS_URLS.live : WS_URLS.demo
+    const ws = new WebSocket(wsUrl)
 
-    const connection: WSConnection = {
-      ws,
-      heartbeatInterval: null as any,
-      reconnectAttempts,
-      accountId: account.id,
-    };
+    ws.on('open', () => {
+      this.reconnectAttempts.set(account.id, 0)
+      // Autenticar y sincronizar
+      ws.send(`authorize\n1\n\n${token}`)
+      ws.send('user/syncrequest\n2\n\n{}')
+    })
 
-    ws.on('open', async () => {
-      connection.reconnectAttempts = 0;
-
-      // Authenticate
-      try {
-        const accessToken = await tokenManager.ensureValidToken(account);
-        ws.send(`authorize\n0\n\n${accessToken}`);
-      } catch (err) {
-        console.error(`WS auth failed for account ${account.id}:`, (err as Error).message);
-        ws.close();
-        return;
-      }
-
-      // Heartbeat every 2500ms
-      connection.heartbeatInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send('[]');
-        }
-      }, 2500);
-
-      // Request sync
-      ws.send('user/syncrequest\n1\n\n{}');
-
-      this.emit('connected', account.id);
-    });
-
-    ws.on('message', (data: WebSocket.Data) => {
-      try {
-        const msg = data.toString();
-        this.handleMessage(account.id, msg);
-      } catch {
-        // Ignore parse errors for heartbeat responses
-      }
-    });
+    ws.on('message', (data: Buffer) => {
+      this.handleMessage(account.id, data.toString())
+    })
 
     ws.on('close', () => {
-      this.cleanup(account.id);
-      this.scheduleReconnect(account, wsUrl, connection.reconnectAttempts);
-    });
+      this.scheduleReconnect(account)
+    })
 
     ws.on('error', (err) => {
-      console.error(`WS error for account ${account.id}:`, err.message);
-    });
+      console.error(`WebSocket error cuenta ${account.id}:`, err.message)
+    })
 
-    this.connections.set(account.id, connection);
+    // Heartbeat cada 2500ms
+    const heartbeat = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send('[]')
+    }, 2500)
+
+    ws.on('close', () => clearInterval(heartbeat))
+
+    this.connections.set(account.id, ws)
   }
 
   private handleMessage(accountId: string, raw: string): void {
-    // Tradovate WS messages have format: event\nid\n\ndata
-    const lines = raw.split('\n');
-    if (lines.length < 4) return;
+    if (!raw || raw === 'o' || raw.startsWith('h')) return
+    const cb = this.callbacks.get(accountId)
+    if (!cb) return
 
     try {
-      const data = JSON.parse(lines.slice(3).join('\n'));
-
-      if (Array.isArray(data)) {
-        for (const event of data) {
-          if (event.e === 'order' && event.d?.ordStatus === 'Filled') {
-            this.emit('order_fill', {
-              accountId,
-              orderId: String(event.d.id),
-              fillPrice: event.d.avgPx || event.d.price,
-              status: 'filled',
-            });
-            this.updateOrderFill(event.d);
-          }
-
-          if (event.e === 'position') {
-            this.emit('position_change', {
-              accountId,
-              symbol: event.d.contractId,
-              netPos: event.d.netPos,
-            });
-          }
-
-          if (event.e === 'cashBalance') {
-            this.updateAccountBalance(accountId, event.d.cashBalance || event.d.totalCashValue);
-          }
+      const frames = JSON.parse(raw.slice(1)) as Array<{ e: string; d: unknown }>
+      for (const frame of frames) {
+        if (!frame.e) continue
+        if (frame.e === 'fill') {
+          cb({ type: 'order_fill', accountId, data: frame.d as Record<string, unknown> })
+          this.handleOrderFill(accountId, frame.d as Record<string, unknown>)
+        } else if (frame.e === 'position') {
+          cb({ type: 'position_change', accountId, data: frame.d as Record<string, unknown> })
+        } else if (frame.e === 'account') {
+          cb({ type: 'account_update', accountId, data: frame.d as Record<string, unknown> })
+          this.handleAccountUpdate(accountId, frame.d as Record<string, unknown>)
         }
       }
     } catch {
-      // Not JSON, might be heartbeat response
+      // ignorar frames malformados
     }
   }
 
-  private async updateOrderFill(data: any): Promise<void> {
-    try {
-      const tradovateOrderId = String(data.id);
-      await prisma.order.updateMany({
-        where: { tradovateOrderId },
-        data: {
-          status: 'filled',
-          fillPrice: data.avgPx || data.price || 0,
-        },
-      });
-    } catch {
-      // Order might not exist in our DB
-    }
+  private async handleOrderFill(accountId: string, data: Record<string, unknown>): Promise<void> {
+    const tradovateOrderId = String(data.orderId)
+    await prisma.order.updateMany({
+      where: { tradovateOrderId, accountId },
+      data: { status: 'filled', fillPrice: data.price as number },
+    })
   }
 
-  private async updateAccountBalance(accountId: string, balance: number): Promise<void> {
-    try {
-      await prisma.account.update({
-        where: { id: accountId },
-        data: { balance },
-      });
-    } catch {
-      // Account might not exist
-    }
+  private async handleAccountUpdate(accountId: string, data: Record<string, unknown>): Promise<void> {
+    await prisma.account.update({
+      where: { id: accountId },
+      data: { balance: data.totalCashValue as number },
+    })
   }
 
-  private cleanup(accountId: string): void {
-    const conn = this.connections.get(accountId);
-    if (conn) {
-      clearInterval(conn.heartbeatInterval);
-      this.connections.delete(accountId);
-    }
-  }
-
-  private scheduleReconnect(account: BrokerAccount, wsUrl: string, attempts: number): void {
-    const delay = Math.min(1000 * Math.pow(2, attempts), this.maxReconnectDelay);
-    setTimeout(() => {
-      this.createConnection(account, wsUrl, attempts + 1).catch((err) => {
-        console.error(`WS reconnect failed for ${account.id}:`, err.message);
-      });
-    }, delay);
+  private scheduleReconnect(account: Account): void {
+    const attempts = (this.reconnectAttempts.get(account.id) ?? 0) + 1
+    this.reconnectAttempts.set(account.id, attempts)
+    const delay = Math.min(1000 * Math.pow(2, attempts - 1), 30000)
+    setTimeout(() => this.createConnection(account), delay)
   }
 
   disconnect(accountId: string): void {
-    const conn = this.connections.get(accountId);
-    if (conn) {
-      clearInterval(conn.heartbeatInterval);
-      conn.ws.close();
-      this.connections.delete(accountId);
-    }
-  }
-
-  disconnectAll(): void {
-    for (const [accountId] of this.connections) {
-      this.disconnect(accountId);
-    }
+    this.connections.get(accountId)?.close()
+    this.connections.delete(accountId)
+    this.callbacks.delete(accountId)
   }
 }
 
-export const wsManager = new TradovateWebSocketManager();
+export const wsManager = new TradovateWebSocketManager()

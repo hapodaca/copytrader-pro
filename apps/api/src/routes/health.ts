@@ -1,21 +1,20 @@
-import { Router } from 'express';
-import prisma from '../db/client';
+import { Router } from 'express'
+import { prisma } from '../db/client'
 
-export const healthRouter = Router();
+const router = Router()
 
-healthRouter.get('/', async (_req, res) => {
+router.get('/', async (_req, res) => {
+  let dbOk = false
   try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      db: 'connected',
-    });
-  } catch {
-    res.status(503).json({
-      status: 'error',
-      timestamp: new Date().toISOString(),
-      db: 'disconnected',
-    });
-  }
-});
+    await prisma.$queryRaw`SELECT 1`
+    dbOk = true
+  } catch {}
+
+  res.json({
+    status: dbOk ? 'ok' : 'degraded',
+    db: dbOk ? 'connected' : 'error',
+    timestamp: new Date().toISOString(),
+  })
+})
+
+export default router

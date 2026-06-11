@@ -1,91 +1,104 @@
-import Bottleneck from 'bottleneck';
-import { getBaseUrl } from './auth';
-import { tokenManager } from './auth';
-import { BrokerAccount, BrokerOrder } from '../BrokerAdapter';
+import axios from 'axios'
+import Bottleneck from 'bottleneck'
+import { Account, Signal } from '@prisma/client'
+import { ensureValidToken, getBaseUrl } from './auth'
+import { PlacedOrder } from '../BrokerAdapter'
 
-const limiters: Map<string, Bottleneck> = new Map();
+// Rate limit: max 10 req/seg por cuenta (requerimiento Tradovate)
+const limiters = new Map<string, Bottleneck>()
 
 function getLimiter(accountId: string): Bottleneck {
-  let limiter = limiters.get(accountId);
-  if (!limiter) {
-    limiter = new Bottleneck({
-      maxConcurrent: 1,
-      minTime: 100, // 10 requests per second
-    });
-    limiters.set(accountId, limiter);
+  if (!limiters.has(accountId)) {
+    limiters.set(accountId, new Bottleneck({ minTime: 100, maxConcurrent: 1 }))
   }
-  return limiter;
+  return limiters.get(accountId)!
 }
 
-function mapAction(action: string): string {
-  switch (action) {
-    case 'BUY': return 'Buy';
-    case 'SELL': return 'Sell';
-    case 'CLOSE_LONG': return 'Sell';
-    case 'CLOSE_SHORT': return 'Buy';
-    default: return action;
-  }
+const ACTION_MAP: Record<string, string> = {
+  BUY:         'Buy',
+  SELL:        'Sell',
+  CLOSE_LONG:  'Sell',
+  CLOSE_SHORT: 'Buy',
 }
 
-export class TradovateOrderService {
-  async placeOrder(account: BrokerAccount, signal: { symbol: string; action: string }, qty: number): Promise<BrokerOrder> {
-    const accessToken = await tokenManager.ensureValidToken(account);
-    const baseUrl = getBaseUrl(account.environment);
-    const limiter = getLimiter(account.id);
-
-    const result = await limiter.schedule(async () => {
-      const response = await fetch(`${baseUrl}/order/placeorder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          accountSpec: account.tradovateSpec,
-          accountId: parseInt(account.tradovateId),
-          action: mapAction(signal.action),
-          symbol: signal.symbol,
-          orderQty: qty,
-          orderType: 'Market',
-          isAutomated: true, // CME regulation requirement
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Tradovate placeOrder failed (${response.status}): ${errorText}`);
-      }
-
-      return (await response.json()) as Record<string, any>;
-    });
-
-    return {
-      orderId: String(result.orderId || result.id),
-      status: result.orderStatus || 'sent',
-      fillPrice: result.fillPrice,
-    };
-  }
-
-  async cancelOrder(account: BrokerAccount, orderId: string): Promise<void> {
-    const accessToken = await tokenManager.ensureValidToken(account);
-    const baseUrl = getBaseUrl(account.environment);
-    const limiter = getLimiter(account.id);
-
-    await limiter.schedule(async () => {
-      const response = await fetch(`${baseUrl}/order/cancelorder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ orderId: parseInt(orderId) }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Tradovate cancelOrder failed: ${response.status}`);
-      }
-    });
-  }
+// Acción opuesta para los brackets (SL/TP siempre son la dirección contraria)
+const BRACKET_ACTION: Record<string, string> = {
+  Buy:  'Sell',
+  Sell: 'Buy',
 }
 
-export const tradovateOrderService = new TradovateOrderService();
+export async function placeOrder(
+  account: Account,
+  signal: Pick<Signal, 'symbol' | 'action' | 'sl' | 'tp'>,
+  qty: number
+): Promise<PlacedOrder> {
+  const token   = await ensureValidToken(account)
+  const baseUrl = getBaseUrl(account.environment)
+  const action  = ACTION_MAP[signal.action] ?? signal.action
+  const limiter = getLimiter(account.id)
+
+  const base = {
+    accountSpec: account.tradovateSpec,
+    accountId:   Number(account.tradovateId),
+    action,
+    symbol:      signal.symbol,
+    orderQty:    qty,
+    isAutomated: true, // OBLIGATORIO por regulación CME
+  }
+
+  // ── Con SL y/o TP → bracket order (placeOSO) ──────────────────────
+  if (signal.sl || signal.tp) {
+    const bracketAction = BRACKET_ACTION[action] ?? action
+    const brackets: Record<string, unknown>[] = []
+
+    if (signal.tp) {
+      brackets.push({
+        action:    bracketAction,
+        orderType: 'Limit',
+        price:     signal.tp,
+        orderQty:  qty,
+      })
+    }
+    if (signal.sl) {
+      brackets.push({
+        action:     bracketAction,
+        orderType:  'Stop',
+        stopPrice:  signal.sl,
+        orderQty:   qty,
+      })
+    }
+
+    const osoPayload: Record<string, unknown> = {
+      entryOrder: { ...base, orderType: 'Market' },
+    }
+    if (brackets[0]) osoPayload.bracket1 = brackets[0]
+    if (brackets[1]) osoPayload.bracket2 = brackets[1]
+
+    const { data } = await limiter.schedule(() =>
+      axios.post(`${baseUrl}/order/placeOSO`, osoPayload, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    )
+    return { orderId: String(data.orderId), status: data.orderStatus ?? 'Working' }
+  }
+
+  // ── Sin SL/TP → orden de mercado simple ───────────────────────────
+  const { data } = await limiter.schedule(() =>
+    axios.post(
+      `${baseUrl}/order/placeorder`,
+      { ...base, orderType: 'Market' },
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+  )
+  return { orderId: String(data.orderId), status: data.orderStatus ?? 'Working' }
+}
+
+export async function cancelOrder(account: Account, orderId: string): Promise<void> {
+  const token   = await ensureValidToken(account)
+  const baseUrl = getBaseUrl(account.environment)
+  await axios.post(
+    `${baseUrl}/order/cancelorder`,
+    { orderId: Number(orderId) },
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+}

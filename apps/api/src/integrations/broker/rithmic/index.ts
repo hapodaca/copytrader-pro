@@ -1,2 +1,1 @@
-// TODO v2.1 — Rithmic broker adapter
-export {};
+// TODO v2.1 — Adaptador Rithmic

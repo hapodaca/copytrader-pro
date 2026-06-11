@@ -1,83 +1,63 @@
-import { Router, Response } from 'express';
-import prisma from '../db/client';
-import { AuthRequest } from '../middleware/auth';
+import { Router, Response } from 'express'
+import { z } from 'zod'
+import { prisma } from '../db/client'
+import { requireAuth, AuthRequest } from '../middleware/auth'
 
-export const rulesRouter = Router();
+const router = Router()
 
-// GET /:accountId — get rules for account
-rulesRouter.get('/:accountId', async (req: AuthRequest, res: Response) => {
+const SessionString = z.string().regex(
+  /^\d{2}:\d{2}-\d{2}:\d{2}$/,
+  'Formato de sesión inválido. Use HH:MM-HH:MM (ej: 08:30-15:00 o 19:00-03:00)'
+)
+
+const RulesSchema = z.object({
+  accountStage: z.string().optional(),           // 'challenge' | 'funded_to_withdrawal' | 'funded_active' | 'recurso_propio' | custom
+  company: z.string().optional(),                // 'apex' | custom text
+  riskMode: z.enum(['fixed_usd', 'pct_balance']).optional(),
+  fixedRiskAmount: z.number().positive().optional(),
+  maxEntriesPerDay: z.number().int().min(1).optional(),
+  allowedDays: z.array(z.enum(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'])).optional(),
+  // Legacy single-window (kept for backwards compat)
+  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  // New: multi-session array ["HH:MM-HH:MM", ...] — supports cross-midnight
+  allowedSessions: z.array(SessionString).optional(),
+  // No-trade zones: blocked regardless of allowedSessions
+  blockedSessions: z.array(SessionString).optional(),
+  maxDrawdownPct: z.number().min(0).max(100).optional(),
+  reduceRiskAfterLosses: z.boolean().optional(),
+  reduceRiskFactor: z.number().min(0).max(1).optional(),
+  maxConsecutiveLosses: z.number().int().min(1).optional(),
+  pauseAfterMaxLosses: z.boolean().optional(),
+})
+
+router.get('/:accountId/rules', requireAuth, async (req: AuthRequest, res: Response, next) => {
   try {
-    // Verify account belongs to user
     const account = await prisma.account.findFirst({
-      where: { id: req.params.accountId, userId: req.userId! },
-    });
+      where: { id: req.params.accountId, userId: req.user!.id },
+    })
+    if (!account) return res.status(404).json({ error: 'Cuenta no encontrada' })
 
-    if (!account) {
-      res.status(404).json({ success: false, error: 'Cuenta no encontrada' });
-      return;
-    }
+    const rules = await prisma.tradingRules.findUnique({ where: { accountId: req.params.accountId } })
+    res.json(rules)
+  } catch (err) { next(err) }
+})
 
-    const rules = await prisma.tradingRules.findUnique({
-      where: { accountId: req.params.accountId },
-    });
-
-    res.json({ success: true, data: rules });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// PUT /:accountId — upsert rules
-rulesRouter.put('/:accountId', async (req: AuthRequest, res: Response) => {
+router.put('/:accountId/rules', requireAuth, async (req: AuthRequest, res: Response, next) => {
   try {
-    // Verify account belongs to user
     const account = await prisma.account.findFirst({
-      where: { id: req.params.accountId, userId: req.userId! },
-    });
+      where: { id: req.params.accountId, userId: req.user!.id },
+    })
+    if (!account) return res.status(404).json({ error: 'Cuenta no encontrada' })
 
-    if (!account) {
-      res.status(404).json({ success: false, error: 'Cuenta no encontrada' });
-      return;
-    }
-
-    const {
-      accountStage,
-      riskMode,
-      fixedRiskAmount,
-      maxEntriesPerDay,
-      allowedDays,
-      startTime,
-      endTime,
-      maxDrawdownPct,
-      reduceRiskAfterLosses,
-      reduceRiskFactor,
-      maxConsecutiveLosses,
-      pauseAfterMaxLosses,
-    } = req.body;
-
-    const data = {
-      ...(accountStage !== undefined && { accountStage }),
-      ...(riskMode !== undefined && { riskMode }),
-      ...(fixedRiskAmount !== undefined && { fixedRiskAmount }),
-      ...(maxEntriesPerDay !== undefined && { maxEntriesPerDay }),
-      ...(allowedDays !== undefined && { allowedDays }),
-      ...(startTime !== undefined && { startTime }),
-      ...(endTime !== undefined && { endTime }),
-      ...(maxDrawdownPct !== undefined && { maxDrawdownPct }),
-      ...(reduceRiskAfterLosses !== undefined && { reduceRiskAfterLosses }),
-      ...(reduceRiskFactor !== undefined && { reduceRiskFactor }),
-      ...(maxConsecutiveLosses !== undefined && { maxConsecutiveLosses }),
-      ...(pauseAfterMaxLosses !== undefined && { pauseAfterMaxLosses }),
-    };
-
+    const data = RulesSchema.parse(req.body)
     const rules = await prisma.tradingRules.upsert({
       where: { accountId: req.params.accountId },
       update: data,
       create: { accountId: req.params.accountId, ...data },
-    });
+    })
+    res.json(rules)
+  } catch (err) { next(err) }
+})
 
-    res.json({ success: true, data: rules });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+export default router

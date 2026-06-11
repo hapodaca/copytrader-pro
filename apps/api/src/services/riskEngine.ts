@@ -1,51 +1,51 @@
-import { BrokerRegistry } from '../integrations/broker/BrokerRegistry';
-import { getDailyStats, toChicagoTime } from './scheduleFilter';
+import { Account, TradingRules } from '@prisma/client'
+import { prisma } from '../db/client'
+import { BrokerRegistry } from '../integrations/broker/BrokerRegistry'
 
-interface RiskRules {
-  riskMode: string;
-  fixedRiskAmount: number;
-  reduceRiskAfterLosses: boolean;
-  reduceRiskFactor: number;
+function toChicagoDateStr(date: Date): string {
+  const chicagoStr = date.toLocaleString('en-US', { timeZone: 'America/Chicago' })
+  return new Date(chicagoStr).toISOString().split('T')[0]
 }
 
-interface FollowerInfo {
-  followerAccountId: string;
-  riskPct: number;
-  follower: {
-    id: string;
-    tradovateId: string;
-    tradovateSpec: string;
-    environment: string;
-    accessToken: string | null;
-    refreshToken: string | null;
-    tokenExpiry: Date | null;
-    brokerType: string;
-  };
-}
-
+// Recibe la cuenta ya cargada (el caller siempre la tiene) y opcionalmente el
+// margen inicial pre-calculado — permite cachearlo por símbolo cuando una señal
+// se distribuye a muchas cuentas, evitando una llamada al broker por cuenta.
 export async function calculateQty(
-  follower: FollowerInfo,
-  signal: { symbol: string },
-  rules: RiskRules
+  account: Account,
+  symbol: string,
+  riskPct: number,
+  rules: TradingRules,
+  precomputedMargin?: number,
 ): Promise<number> {
-  const broker = BrokerRegistry.get(follower.follower.brokerType);
-  const balance = await broker.getBalance(follower.follower);
-  const margin = await broker.getInitialMargin(signal.symbol);
+  const broker = BrokerRegistry.get(account.brokerType)
 
-  if (margin <= 0) return 0;
+  const [balance, margin] = await Promise.all([
+    broker.getBalance(account),
+    precomputedMargin !== undefined
+      ? Promise.resolve(precomputedMargin)
+      : broker.getInitialMargin(symbol),
+  ])
 
-  // riskMode: 'fixed_usd' para challenge/funded Apex
-  //           'pct_balance' para modo libre
-  let riskAmount = rules.riskMode === 'fixed_usd'
-    ? rules.fixedRiskAmount
-    : balance * (follower.riskPct / 100);
+  if (margin <= 0) return 0
+
+  let riskAmount: number
+  if (rules.riskMode === 'fixed_usd') {
+    riskAmount = rules.fixedRiskAmount
+  } else {
+    riskAmount = balance * (riskPct / 100)
+  }
 
   // Reducción por losses consecutivos
   if (rules.reduceRiskAfterLosses) {
-    const now = toChicagoTime(new Date());
-    const stats = await getDailyStats(follower.followerAccountId, now.date);
-    riskAmount *= Math.pow(rules.reduceRiskFactor, stats.consecutiveLosses);
+    const dateStr = toChicagoDateStr(new Date())
+    const date = new Date(dateStr + 'T00:00:00.000Z')
+    const stats = await prisma.dailyStat.findUnique({
+      where: { accountId_date: { accountId: account.id, date } },
+    })
+    if (stats && stats.consecutiveLosses > 0) {
+      riskAmount *= Math.pow(rules.reduceRiskFactor, stats.consecutiveLosses)
+    }
   }
 
-  return Math.max(0, Math.floor(riskAmount / margin));
+  return Math.max(0, Math.floor(riskAmount / margin))
 }

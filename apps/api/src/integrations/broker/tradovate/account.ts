@@ -1,41 +1,41 @@
-import { getBaseUrl, tokenManager } from './auth';
-import { BrokerAccount, Position } from '../BrokerAdapter';
+import axios from 'axios'
+import { Account } from '@prisma/client'
+import { ensureValidToken, getBaseUrl } from './auth'
+import { Position } from '../BrokerAdapter'
 
-export async function getCashBalance(account: BrokerAccount): Promise<number> {
-  const accessToken = await tokenManager.ensureValidToken(account);
-  const baseUrl = getBaseUrl(account.environment);
-
-  const response = await fetch(
-    `${baseUrl}/cashBalance/getCashBalanceSnapshot?accountId=${account.tradovateId}`,
-    {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to get cash balance: ${response.status}`);
-  }
-
-  const data = (await response.json()) as Record<string, any>;
-  return data.cashBalance ?? data.totalCashValue ?? 0;
+export async function getBalance(account: Account): Promise<number> {
+  const token = await ensureValidToken(account)
+  const baseUrl = getBaseUrl(account.environment)
+  const { data } = await axios.get(`${baseUrl}/cashBalance/getCashBalanceSnapshot`, {
+    params: { accountId: Number(account.tradovateId) },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return data.totalCashValue ?? 0
 }
 
-export async function getPositions(account: BrokerAccount): Promise<Position[]> {
-  const accessToken = await tokenManager.ensureValidToken(account);
-  const baseUrl = getBaseUrl(account.environment);
+export async function getPositions(account: Account): Promise<Position[]> {
+  const token = await ensureValidToken(account)
+  const baseUrl = getBaseUrl(account.environment)
+  const { data } = await axios.get(`${baseUrl}/position/list`, {
+    params: { accountId: Number(account.tradovateId) },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return (data ?? []).map((p: Record<string, unknown>) => ({
+    symbol: p.contractId as string,
+    side: (p.netPos as number) > 0 ? 'long' : 'short',
+    qty: Math.abs(p.netPos as number),
+    avgPrice: p.netPrice as number,
+  }))
+}
 
-  const response = await fetch(`${baseUrl}/position/list`, {
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get positions: ${response.status}`);
+export async function getInitialMargin(symbol: string, environment: string): Promise<number> {
+  const baseUrl = environment === 'live'
+    ? 'https://live.tradovateapi.com/v1'
+    : 'https://demo.tradovateapi.com/v1'
+  try {
+    const { data } = await axios.get(`${baseUrl}/contract/find`, { params: { name: symbol } })
+    return data?.initialMargin ?? 500
+  } catch {
+    return 500 // fallback seguro
   }
-
-  const data = await response.json();
-  return (data as any[]).map((p) => ({
-    symbol: p.contractId?.toString() || '',
-    netPos: p.netPos || 0,
-    avgPrice: p.avgPrice || 0,
-  }));
 }

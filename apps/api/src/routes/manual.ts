@@ -1,58 +1,68 @@
-import { Router, Response } from 'express';
-import { z } from 'zod';
-import prisma from '../db/client';
-import { AuthRequest } from '../middleware/auth';
-import { processSignal } from '../services/copyRouter';
+import { Router, Response, NextFunction } from 'express'
+import { z } from 'zod'
+import { prisma } from '../db/client'
+import { requireAuth, AuthRequest } from '../middleware/auth'
+import { routeSignal } from '../services/copyRouter'
+import { captureChartForSignal } from '../services/chartCapture'
 
-export const manualRouter = Router();
+const router = Router()
 
 const ManualSignalSchema = z.object({
-  groupId: z.string().min(1),
-  symbol: z.string().min(1),
-  action: z.enum(['BUY', 'SELL', 'CLOSE_LONG', 'CLOSE_SHORT']),
-  qty: z.number().int().positive().optional(),
-});
+  groupId:  z.string().min(1),
+  symbol:   z.string().min(1),
+  action:   z.enum(['BUY', 'SELL', 'CLOSE_LONG', 'CLOSE_SHORT']),
+  price:    z.number().positive().optional(),
+  timeframe: z.string().optional(),
+  sl:       z.number().positive().optional(), // stop loss price
+  tp:       z.number().positive().optional(), // take profit price
+})
 
-// POST /signal
-manualRouter.post('/signal', async (req: AuthRequest, res: Response) => {
+router.post('/signal', requireAuth, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const payload = ManualSignalSchema.parse(req.body);
+    const data = ManualSignalSchema.parse(req.body)
 
-    // Verify group belongs to user
+    // Verificar que el grupo pertenece al usuario
     const group = await prisma.copyGroup.findFirst({
-      where: { id: payload.groupId, userId: req.userId! },
-    });
+      where: { id: data.groupId, userId: req.user!.id, isActive: true },
+    })
+    if (!group) return res.status(404).json({ error: 'Grupo no encontrado' })
 
-    if (!group) {
-      res.status(404).json({ success: false, error: 'Grupo no encontrado' });
-      return;
-    }
+    // Número secuencial de envío por usuario
+    const seqNumber = (await prisma.signal.count({ where: { userId: req.user!.id } })) + 1
 
-    // Create signal
     const signal = await prisma.signal.create({
       data: {
-        userId: req.userId!,
+        userId: req.user!.id,
         source: 'manual',
-        symbol: payload.symbol,
-        action: payload.action,
-        price: 0, // Manual signals don't have a price
-        contracts: payload.qty,
+        symbol: data.symbol,
+        action: data.action,
+        price: data.price ?? 0,
+        timeframe: data.timeframe ?? null,
+        sl: data.sl ?? null,
+        tp: data.tp ?? null,
         rawPayload: req.body,
         status: 'received',
+        seqNumber,
       },
-    });
+    })
 
-    // Process through copy router with specific group
-    processSignal(signal, req.userId!, payload.groupId).catch((err) => {
-      console.error(`Manual signal processing failed for ${signal.id}:`, err.message);
-    });
+    res.status(200).json({ received: true, signalId: signal.id })
 
-    res.json({ success: true, data: signal });
-  } catch (error: any) {
-    if (error.name === 'ZodError') {
-      res.status(400).json({ success: false, error: 'Payload inválido', details: error.errors });
-      return;
+    // Capturar chart async (no bloquea)
+    captureChartForSignal(signal.id, signal.symbol, signal.action, signal.price, signal.timeframe, signal.sl, signal.tp)
+      .catch(() => {})
+
+    // Procesar async con el groupId específico
+    routeSignal(signal, data.groupId).catch((err) =>
+      console.error(`Error señal manual ${signal.id}:`, err.message)
+    )
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const issue = err.issues[0]
+      return res.status(400).json({ error: issue?.message ?? 'Payload inválido' })
     }
-    res.status(500).json({ success: false, error: error.message });
+    next(err)
   }
-});
+})
+
+export default router

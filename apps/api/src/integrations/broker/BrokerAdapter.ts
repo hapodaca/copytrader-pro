@@ -1,43 +1,40 @@
-export interface BrokerEvent {
-  type: 'order_fill' | 'position_change' | 'account_update';
-  data: Record<string, unknown>;
+import { Account, Signal } from '@prisma/client'
+
+export interface BrokerCredentials {
+  accessToken: string
+  refreshToken?: string
+  accountId: string
+  environment: 'demo' | 'live'
 }
 
-export interface BrokerAccount {
-  id: string;
-  tradovateId: string;
-  tradovateSpec: string;
-  environment: string;
-  accessToken: string | null;
-  refreshToken: string | null;
-  tokenExpiry: Date | null;
-}
-
-export interface BrokerSignal {
-  symbol: string;
-  action: string;
-  price: number;
-}
-
-export interface BrokerOrder {
-  orderId: string;
-  status: string;
-  fillPrice?: number;
+export interface PlacedOrder {
+  orderId: string
+  status: string
+  fillPrice?: number | null  // precio real de ejecución si el broker lo reporta
 }
 
 export interface Position {
-  symbol: string;
-  netPos: number;
-  avgPrice: number;
+  symbol: string
+  side: 'long' | 'short'
+  qty: number
+  avgPrice: number
+}
+
+export type BrokerEventType = 'order_fill' | 'position_change' | 'account_update'
+
+export interface BrokerEvent {
+  type: BrokerEventType
+  accountId: string
+  data: Record<string, unknown>
 }
 
 export interface BrokerAdapter {
-  readonly brokerName: string;
-  connect(credentials: { accessToken: string; refreshToken: string; environment: string }): Promise<void>;
-  placeOrder(account: BrokerAccount, signal: BrokerSignal, qty: number): Promise<BrokerOrder>;
-  cancelOrder(account: BrokerAccount, orderId: string): Promise<void>;
-  getBalance(account: BrokerAccount): Promise<number>;
-  getPositions(account: BrokerAccount): Promise<Position[]>;
-  getInitialMargin(symbol: string): Promise<number>;
-  subscribeToUpdates(account: BrokerAccount, cb: (event: BrokerEvent) => void): void;
+  readonly brokerName: string
+  connect(credentials: BrokerCredentials): Promise<void>
+  placeOrder(account: Account, signal: Pick<Signal, 'symbol' | 'action' | 'sl' | 'tp'>, qty: number): Promise<PlacedOrder>
+  cancelOrder(account: Account, orderId: string): Promise<void>
+  getBalance(account: Account): Promise<number>
+  getPositions(account: Account): Promise<Position[]>
+  getInitialMargin(symbol: string): Promise<number>
+  subscribeToUpdates(account: Account, cb: (event: BrokerEvent) => void): void
 }

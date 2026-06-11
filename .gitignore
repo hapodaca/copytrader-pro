@@ -57,3 +57,18 @@ doc_content.txt
 
 # Testing
 coverage/
+
+# PM2 runtime logs
+.pm2/
+
+# Claude Code local config
+.claude/
+
+# Docs internos / artefactos locales (pueden contener credenciales)
+ESTADO_PROYECTO.md
+*.docx
+nul
+null
+
+# Screenshots subidos por usuarios
+apps/api/public/screenshots/

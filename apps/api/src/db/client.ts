@@ -1,5 +1,15 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
-export default prisma;
+function createPrismaClient() {
+  return new PrismaClient({
+    // Solo loguea errores reales — los connection resets de Supabase
+    // son normales y Prisma los maneja automáticamente con su pool interno.
+    log: ['error'],
+  })
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

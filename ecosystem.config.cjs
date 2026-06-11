@@ -1,0 +1,68 @@
+// Carga el .env de la raíz — el token del túnel NUNCA va hardcodeado aquí (repo público)
+require('dotenv').config({ path: `${__dirname}/.env` })
+
+module.exports = {
+  apps: [
+    {
+      name: 'synctrade-api',
+      cwd: 'C:/ClaudeCodeProject/copytrader_pro',
+      script: 'node',
+      args: 'node_modules/tsx/dist/cli.mjs apps/api/src/index.ts',
+      watch: false,
+      autorestart: true,
+      max_restarts: 20,
+      min_uptime: '5s',
+      restart_delay: 2000,
+      windowsHide: true,
+      error_file: 'C:/ClaudeCodeProject/copytrader_pro/.pm2/api-error.log',
+      out_file:   'C:/ClaudeCodeProject/copytrader_pro/.pm2/api-out.log',
+      log_date_format: 'HH:mm:ss',
+    },
+    {
+      name: 'synctrade-web',
+      cwd: 'C:/ClaudeCodeProject/copytrader_pro/apps/web',
+      script: 'node',
+      args: 'start-vite.cjs',
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
+      restart_delay: 3000,
+      windowsHide: true,
+      error_file: 'C:/ClaudeCodeProject/copytrader_pro/.pm2/web-error.log',
+      out_file:   'C:/ClaudeCodeProject/copytrader_pro/.pm2/web-out.log',
+      log_date_format: 'HH:mm:ss',
+    },
+    {
+      // Servidor estático de la landing page (synctradepro.io → puerto 8080)
+      name: 'synctrade-landing',
+      cwd: 'C:/ClaudeCodeProject/copytrader_pro',
+      script: 'node',
+      args: 'apps/landing-server.cjs',
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
+      restart_delay: 2000,
+      windowsHide: true,
+      error_file: 'C:/ClaudeCodeProject/copytrader_pro/.pm2/landing-error.log',
+      out_file:   'C:/ClaudeCodeProject/copytrader_pro/.pm2/landing-out.log',
+      log_date_format: 'HH:mm:ss',
+    },
+    {
+      // Cloudflare Tunnel — expone app + api + landing al dominio synctradepro.io
+      name: 'synctrade-tunnel',
+      script: 'cloudflared',
+      args: `tunnel --no-autoupdate run --token ${process.env.CLOUDFLARE_TUNNEL_TOKEN ?? ''}`,
+      watch: false,
+      autorestart: true,
+      max_restarts: 20,
+      min_uptime: '10s',
+      restart_delay: 3000,
+      windowsHide: true,
+      error_file: 'C:/ClaudeCodeProject/copytrader_pro/.pm2/tunnel-error.log',
+      out_file:   'C:/ClaudeCodeProject/copytrader_pro/.pm2/tunnel-out.log',
+      log_date_format: 'HH:mm:ss',
+    },
+  ],
+}

@@ -2,6 +2,5 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-950 text-gray-100 antialiased;
-}
+* { box-sizing: border-box; }
+body { margin: 0; background-color: #030712; }

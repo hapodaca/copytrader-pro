@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "SyncTrade Pro",
+    "_postman_id": "synctradepro-collection-v1",
+    "description": "Colección completa de endpoints para SyncTrade Pro API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",      "value": "http://localhost:3001",                 "type": "string" },
+    { "key": "webhook_token", "value": "PEGA_AQUI_TU_WEBHOOK_TOKEN", "type": "string" },
+    { "key": "auth_token",    "value": "",                                      "type": "string",
+      "description": "JWT de Supabase — se llena automático al hacer Login" }
+  ],
+  "item": [
+    {
+      "name": "🔔 Webhooks — Formato REAL TradingView",
+      "description": "Estos bodies son EXACTAMENTE lo que TradingView manda.\nURL: {{base_url}}/api/webhook/{{webhook_token}}",
+      "item": [
+        {
+          "name": "TV → BUY (formato real)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/webhook/{{webhook_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "webhook", "{{webhook_token}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"token\": \"{{webhook_token}}\",\n  \"symbol\": \"MNQ1!\",\n  \"timeframe\": \"1\",\n  \"action\": \"BUY\",\n  \"price\": 25005,\n  \"SL\": 24981.75,\n  \"TP\": 25032.89,\n  \"contracts\": 88,\n  \"strategy\": \"MFB Strategy\",\n  \"url\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "TV → SELL (formato real)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/webhook/{{webhook_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "webhook", "{{webhook_token}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"token\": \"{{webhook_token}}\",\n  \"symbol\": \"MNQ1!\",\n  \"timeframe\": \"1\",\n  \"action\": \"SELL\",\n  \"price\": 24980,\n  \"SL\": 25003.50,\n  \"TP\": 24952.25,\n  \"contracts\": 88,\n  \"strategy\": \"MFB Strategy\",\n  \"url\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "TV → CLOSE_LONG (formato real)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/webhook/{{webhook_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "webhook", "{{webhook_token}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"token\": \"{{webhook_token}}\",\n  \"symbol\": \"MNQ1!\",\n  \"timeframe\": \"1\",\n  \"action\": \"CLOSE_LONG\",\n  \"price\": 25010,\n  \"strategy\": \"MFB Strategy\",\n  \"url\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "TV → CLOSE_SHORT (formato real)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/webhook/{{webhook_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "webhook", "{{webhook_token}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"token\": \"{{webhook_token}}\",\n  \"symbol\": \"MNQ1!\",\n  \"timeframe\": \"1\",\n  \"action\": \"CLOSE_SHORT\",\n  \"price\": 24970,\n  \"strategy\": \"MFB Strategy\",\n  \"url\": \"\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔑 Auth",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/health", "host": ["{{base_url}}"], "path": ["api","health"] }
+          }
+        },
+        {
+          "name": "Login — guarda token automático",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.access_token) {",
+                  "  pm.collectionVariables.set('auth_token', j.access_token);",
+                  "  console.log('✅ Token guardado OK');",
+                  "} else { console.log('❌ No se encontró access_token', JSON.stringify(j)); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "apikey",       "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnZ3ZlbHZpaGlneHJmcnlzaXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5MDQ1MzQsImV4cCI6MjA4ODQ4MDUzNH0.lfSFxbX9QLk0_ThRUcXiy3hnb485VdSjqElCT72cg_o" }
+            ],
+            "url": {
+              "raw": "https://tggvelvihigxrfrysiuq.supabase.co/auth/v1/token?grant_type=password",
+              "host": ["https://tggvelvihigxrfrysiuq.supabase.co"],
+              "path": ["auth","v1","token"],
+              "query": [{ "key": "grant_type", "value": "password" }]
+            },
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"admin@copytrader.local\",\n  \"password\": \"Admin1234!\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Señales",
+      "item": [
+        {
+          "name": "Listar señales (todas)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/signals?limit=50&offset=0",
+              "host": ["{{base_url}}"], "path": ["api","signals"],
+              "query": [
+                { "key": "limit",  "value": "50" },
+                { "key": "offset", "value": "0" },
+                { "key": "status", "value": "", "disabled": true },
+                { "key": "source", "value": "", "disabled": true },
+                { "key": "symbol", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Señales — solo rejected (duplicados bloqueados)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/signals?status=rejected&limit=50",
+              "host": ["{{base_url}}"], "path": ["api","signals"],
+              "query": [{ "key": "status", "value": "rejected" }, { "key": "limit", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Señal por ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/signals/:id",
+              "host": ["{{base_url}}"], "path": ["api","signals",":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 Órdenes",
+      "item": [
+        {
+          "name": "Listar órdenes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/orders?limit=50",
+              "host": ["{{base_url}}"], "path": ["api","orders"],
+              "query": [
+                { "key": "limit",     "value": "50" },
+                { "key": "status",    "value": "", "disabled": true },
+                { "key": "accountId", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Órdenes — skipped (razón de omisión)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/orders?status=skipped&limit=50",
+              "host": ["{{base_url}}"], "path": ["api","orders"],
+              "query": [{ "key": "status", "value": "skipped" }, { "key": "limit", "value": "50" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏦 Cuentas",
+      "item": [
+        {
+          "name": "Listar cuentas",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/accounts", "host": ["{{base_url}}"], "path": ["api","accounts"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Grupos de Copia",
+      "item": [
+        {
+          "name": "Listar grupos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+            "url": { "raw": "{{base_url}}/api/copy-groups", "host": ["{{base_url}}"], "path": ["api","copy-groups"] }
+          }
+        }
+      ]
+    }
+  ]
+}

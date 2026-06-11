@@ -3,69 +3,74 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  passwordHash String
-  name         String?
-  role         String        @default("user") // 'admin' | 'user'
-  webhookToken String        @unique @default(cuid())
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
+// Profile extiende a Supabase auth.users (mismo UUID)
+model Profile {
+  id           String    @id // = auth.users.id de Supabase
+  role         String    @default("user") // 'admin' | 'user'
+  webhookToken String    @unique @default(uuid())
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  // Notificaciones
+  notifyEmail      String?   // email destino para alertas
+  telegramChatId   String?   // Telegram chat ID (obtener con /start en el bot)
+  notifyOnSignal   Boolean   @default(false) // señal recibida
+  notifyOnFill     Boolean   @default(true)  // orden ejecutada
+  notifyOnSkip     Boolean   @default(true)  // orden saltada (skip)
+  notifyOnError    Boolean   @default(true)  // error al ejecutar
   accounts     Account[]
   subscription Subscription?
 }
 
-model Subscription {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  user           User      @relation(fields: [userId], references: [id])
-  plan           String    @default("monthly")
-  status         String    @default("active")
-  monthlyFeeUsd  Float     @default(0)
-  performancePct Float     @default(0)
-  startDate      DateTime  @default(now())
-  nextBillingAt  DateTime?
-}
-
 model Account {
-  id            String         @id @default(cuid())
+  id            String    @id @default(cuid())
   userId        String
-  user          User           @relation(fields: [userId], references: [id])
+  profile       Profile   @relation(fields: [userId], references: [id])
   name          String
-  brokerType    String         @default("tradovate")
-  tradovateId   String         @unique
-  tradovateSpec String
-  environment   String         @default("demo")
-  accessToken   String?
+  tradovateId   String    @unique
+  tradovateSpec     String
+  tradovateUsername String?               // email/login Tradovate (referencia)
+  accountStage      String?               // 'eval_1' | 'eval_2' | 'funded' | 'performance'
+  environment       String    @default("demo") // 'demo' | 'live'
+  brokerType        String    @default("tradovate")
+  accessToken       String?
   refreshToken  String?
   tokenExpiry   DateTime?
-  isActive      Boolean        @default(true)
-  balance       Float          @default(0)
-  createdAt     DateTime       @default(now())
+  isActive      Boolean   @default(true)
+  balance       Float     @default(0)
+  createdAt     DateTime  @default(now())
   tradingRules  TradingRules?
   ordersPlaced  Order[]
   dailyStats    DailyStat[]
-  masterGroups  CopyGroup[]    @relation("MasterAccount")
+  masterGroups  CopyGroup[]     @relation("MasterAccount") // grupos donde esta cuenta fue registrada como master
   followerLinks GroupFollower[]
+
+  @@index([userId])
 }
 
 model CopyGroup {
-  id               String         @id @default(cuid())
+  id               String   @id @default(cuid())
   userId           String
   name             String
-  masterAccountId  String
-  master           Account        @relation("MasterAccount", fields: [masterAccountId], references: [id])
-  isActive         Boolean        @default(true)
-  distributionMode String         @default("all")
-  batchSize        Int            @default(4)
-  rotateIndex      Int            @default(0)
+  masterAccountId  String?   // opcional — master es rol conceptual, no campo obligatorio
+  master           Account?  @relation("MasterAccount", fields: [masterAccountId], references: [id])
+  isActive         Boolean  @default(true)
+  distributionMode String   @default("all") // 'all' | 'rotate' | 'rotate_group' | 'batch_rotate'
+  batchSize        Int      @default(4)
+  rotateIndex      Int      @default(0)
+  symbol           String?  // filtro opcional — solo procesa señales de este ticker
+  tipoGrupo        String   @default("copy_group") // 'copy_group' | 'master'
+  orderMode        String   @default("auto")        // 'auto' | 'manual'
   followers        GroupFollower[]
-  createdAt        DateTime       @default(now())
+  orders           Order[]         @relation("OrderGroup")
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([masterAccountId])
 }
 
 model GroupFollower {
@@ -78,24 +83,30 @@ model GroupFollower {
   isActive          Boolean   @default(true)
   rotateOrder       Int       @default(0)
   lastOrderAt       DateTime?
+
+  @@index([groupId])
+  @@index([followerAccountId])
 }
 
 model TradingRules {
-  id                    String   @id @default(cuid())
-  accountId             String   @unique
-  account               Account  @relation(fields: [accountId], references: [id])
-  accountStage          String   @default("challenge")
-  riskMode              String   @default("fixed_usd")
-  fixedRiskAmount       Float    @default(650)
-  maxEntriesPerDay      Int      @default(3)
-  allowedDays           String[] @default(["MON", "TUE", "WED", "THU", "FRI"])
-  startTime             String   @default("08:00")
-  endTime               String   @default("15:30")
-  maxDrawdownPct        Float    @default(5.0)
-  reduceRiskAfterLosses Boolean  @default(true)
-  reduceRiskFactor      Float    @default(0.5)
-  maxConsecutiveLosses  Int      @default(3)
-  pauseAfterMaxLosses   Boolean  @default(true)
+  id                     String   @id @default(cuid())
+  accountId              String   @unique
+  account                Account  @relation(fields: [accountId], references: [id])
+  accountStage           String   @default("challenge") // 'challenge' | 'funded_to_withdrawal' | 'funded_active' | 'recurso_propio' | custom
+  company                String   @default("") // 'apex' | custom text
+  riskMode               String   @default("fixed_usd") // 'fixed_usd' | 'pct_balance'
+  fixedRiskAmount        Float    @default(650)
+  maxEntriesPerDay       Int      @default(3)
+  allowedDays            String[] @default(["MON", "TUE", "WED", "THU", "FRI"])
+  startTime              String   @default("08:00")   // legacy — usar allowedSessions
+  endTime                String   @default("15:30")   // legacy — usar allowedSessions
+  allowedSessions        String[] @default([])        // ["HH:MM-HH:MM", ...] — soporta multi-sesión y cruce de medianoche
+  blockedSessions        String[] @default([])        // ["HH:MM-HH:MM", ...] — zonas donde NO operar (ej: "17:00-19:00")
+  maxDrawdownPct         Float    @default(5.0)
+  reduceRiskAfterLosses  Boolean  @default(true)
+  reduceRiskFactor       Float    @default(0.5)
+  maxConsecutiveLosses   Int      @default(3)
+  pauseAfterMaxLosses    Boolean  @default(true)
 }
 
 model Signal {
@@ -103,36 +114,57 @@ model Signal {
   userId       String
   source       String   @default("tradingview")
   symbol       String
-  action       String
+  action       String   // 'BUY' | 'SELL' | 'CLOSE_LONG' | 'CLOSE_SHORT'
   price        Float
   contracts    Int?
-  strategy     String?
-  timeframe    String?
-  rawPayload   Json
-  status       String   @default("received")
+  strategy      String?
+  timeframe     String?
+  sl            Float?
+  tp            Float?
+  screenshotUrl String?
+  rawPayload    Json
+  status       String   @default("received") // 'received' | 'processed' | 'rejected'
   rejectReason String?
+  seqNumber    Int?     // sequential dispatch number per user
   createdAt    DateTime @default(now())
   orders       Order[]
+
+  @@index([userId, createdAt])
 }
 
 model Order {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   signalId         String
-  signal           Signal   @relation(fields: [signalId], references: [id])
+  signal           Signal     @relation(fields: [signalId], references: [id])
   accountId        String
-  account          Account  @relation(fields: [accountId], references: [id])
+  account          Account    @relation(fields: [accountId], references: [id])
+  groupId          String?
+  group            CopyGroup? @relation("OrderGroup", fields: [groupId], references: [id])
   symbol           String
   side             String
   qty              Int
-  orderType        String   @default("Market")
-  status           String   @default("pending")
+  orderType        String     @default("Market")
+  sl               Float?     // stop loss price (opcional)
+  tp               Float?     // take profit price (opcional)
+  status           String     @default("pending") // 'pending' | 'sent' | 'filled' | 'skipped' | 'rejected' | 'error'
   tradovateOrderId String?
   fillPrice        Float?
   skipReason       String?
   errorMsg         String?
-  retryCount       Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  retryCount       Int        @default(0)
+  // Bitácora de Trading fields
+  source           String?    // denormalized from Signal.source
+  timeframe        String?    // denormalized from Signal.timeframe
+  exitPrice        Float?     // fill price of the closing order
+  winLoss          String?    // 'W' | 'L'
+  closedAt         DateTime?  // when the position was closed
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([accountId, status, createdAt])
+  @@index([accountId, symbol, status])  // checkpoint anti-duplicados del copyRouter
+  @@index([signalId])
+  @@index([groupId])
 }
 
 model DailyStat {
@@ -149,4 +181,22 @@ model DailyStat {
   isPaused          Boolean  @default(false)
 
   @@unique([accountId, date])
+}
+
+model Subscription {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  profile        Profile   @relation(fields: [userId], references: [id])
+  plan           String    @default("monthly") // 'monthly' | 'performance'
+  status         String    @default("trial") // 'trial' | 'active' | 'cancelled' | 'past_due'
+  monthlyFeeUsd  Float     @default(0)
+  performancePct Float     @default(0)
+  startDate      DateTime  @default(now())
+  nextBillingAt  DateTime?
+}
+
+// Configuración global del sistema (clave-valor)
+model SystemConfig {
+  key   String @id
+  value String
 }

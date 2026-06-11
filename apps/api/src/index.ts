@@ -1,75 +1,145 @@
-import express from 'express';
-import cors from 'cors';
-import prisma from './db/client';
-import { webhookRouter } from './routes/webhook';
-import { authRouter } from './routes/auth';
-import { accountsRouter } from './routes/accounts';
-import { groupsRouter } from './routes/groups';
-import { rulesRouter } from './routes/rules';
-import { signalsRouter } from './routes/signals';
-import { ordersRouter } from './routes/orders';
-import { manualRouter } from './routes/manual';
-import { adminRouter } from './routes/admin';
-import { statsRouter } from './routes/stats';
-import { healthRouter } from './routes/health';
-import { reportsRouter } from './routes/reports';
-import { auditRouter } from './routes/audit';
-import { authMiddleware } from './middleware/auth';
-import { initOrderQueue } from './services/orderQueue';
-import bcrypt from 'bcryptjs';
+import 'dotenv/config'
+import express from 'express'
+import cors from 'cors'
+import path from 'path'
+import fs from 'fs'
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+// ── Evitar que errores no capturados maten el proceso ──────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL uncaughtException]', err.message)
+  // No llamamos process.exit() — el servidor sigue corriendo
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL unhandledRejection]', reason)
+  // No llamamos process.exit() — el servidor sigue corriendo
+})
 
-app.use(cors());
-app.use(express.json());
+import webhookRouter from './routes/webhook'
+import { telegramWebhookSecret } from './routes/telegram'
+import { rateLimit } from './middleware/rateLimit'
+import authRouter from './routes/auth'
+import accountsRouter from './routes/accounts'
+import groupsRouter from './routes/groups'
+import rulesRouter from './routes/rules'
+import signalsRouter from './routes/signals'
+import ordersRouter from './routes/orders'
+import manualRouter from './routes/manual'
+import statsRouter from './routes/stats'
+import adminRouter from './routes/admin'
+import healthRouter from './routes/health'
+import reportsRouter from './routes/reports'
+import auditRouter from './routes/audit'
+import settingsRouter from './routes/settings'
+import telegramRouter from './routes/telegram'
+import eventsRouter from './routes/events'
 
-// Public routes
-app.use('/api/webhook', webhookRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/health', healthRouter);
+import { startOrderWorker } from './services/orderQueue'
+import { TradovateAdapter } from './integrations/broker/tradovate/TradovateAdapter'
+import { PaperBrokerAdapter } from './integrations/broker/paper/PaperBrokerAdapter'
+import { BrokerRegistry } from './integrations/broker/BrokerRegistry'
 
-// Protected routes
-app.use('/api/accounts', authMiddleware, accountsRouter);
-app.use('/api/groups', authMiddleware, groupsRouter);
-app.use('/api/rules', authMiddleware, rulesRouter);
-app.use('/api/signals', authMiddleware, signalsRouter);
-app.use('/api/orders', authMiddleware, ordersRouter);
-app.use('/api/manual', authMiddleware, manualRouter);
-app.use('/api/admin', authMiddleware, adminRouter);
-app.use('/api/stats', authMiddleware, statsRouter);
-app.use('/api/reports', authMiddleware, reportsRouter);
-app.use('/api/audit', authMiddleware, auditRouter);
+const app = express()
+const PORT = process.env.PORT ?? 3001
 
-async function bootstrap() {
-  // Initialize order queue worker
-  initOrderQueue();
+// Crear directorio de screenshots si no existe
+const screenshotsDir = path.join(__dirname, '../public/screenshots')
+fs.mkdirSync(screenshotsDir, { recursive: true })
 
-  // Seed admin user
-  const adminExists = await prisma.user.findUnique({
-    where: { email: 'admin@copytrader.local' },
-  });
-  if (!adminExists) {
-    const passwordHash = await bcrypt.hash('Admin1234!', 12);
-    await prisma.user.create({
-      data: {
-        email: 'admin@copytrader.local',
-        passwordHash,
-        name: 'Admin',
-        role: 'admin',
-      },
-    });
-    console.log('Admin user seeded: admin@copytrader.local / Admin1234!');
+// Middleware
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+app.use(cors({ origin: corsOrigins, credentials: true }))
+
+// Headers de seguridad básicos (sin dependencia de helmet)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'no-referrer')
+  next()
+})
+
+// 1MB para todo el API; 10MB solo para el upload de screenshots en base64
+const jsonSmall = express.json({ limit: '1mb' })
+const jsonLarge = express.json({ limit: '10mb' })
+app.use((req, res, next) =>
+  /^\/api\/signals\/[^/]+\/screenshot$/.test(req.path)
+    ? jsonLarge(req, res, next)
+    : jsonSmall(req, res, next)
+)
+
+// Servir imágenes de screenshots subidas manualmente
+app.use('/screenshots', express.static(screenshotsDir))
+
+// Registrar adaptadores de broker
+BrokerRegistry.register(new TradovateAdapter())
+BrokerRegistry.register(new PaperBrokerAdapter())
+
+// Rutas públicas (sin JWT) — con rate limit por IP contra fuerza bruta del token
+app.use('/api/webhook', rateLimit({ windowMs: 60_000, max: 120 }), webhookRouter)
+app.use('/api/telegram', rateLimit({ windowMs: 60_000, max: 60 }), telegramRouter)
+app.use('/api/health', healthRouter)
+app.use('/api/events', eventsRouter)   // SSE — auth via ?token= query param
+
+// Rutas auth
+app.use('/api/auth', authRouter)
+
+// Rutas protegidas (requieren JWT de Supabase)
+app.use('/api/accounts', accountsRouter)
+app.use('/api/accounts', rulesRouter)
+app.use('/api/groups', groupsRouter)
+app.use('/api/signals', signalsRouter)
+app.use('/api/orders', ordersRouter)
+app.use('/api/manual', manualRouter)
+app.use('/api/stats', statsRouter)
+app.use('/api/reports', reportsRouter)
+app.use('/api/audit', auditRouter)
+app.use('/api/settings', settingsRouter)
+app.use('/api/admin', adminRouter)
+
+// Global error handler — logs 500s to console
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Detectar errores de conexión a DB (Supabase/PgBouncer reset)
+  const isDbConnError =
+    err?.message?.includes('10054') ||
+    err?.message?.includes('ConnectionReset') ||
+    err?.message?.includes("Can't reach database") ||
+    err?.code === 'P1001' || err?.code === 'P1002' || err?.code === 'P1008'
+
+  if (isDbConnError) {
+    console.warn('[DB] Conexión reseteada por Supabase (transitorio) — Prisma reconectando...')
+    return res.status(503).json({ error: 'Database temporarily unavailable — please retry in a moment' })
   }
 
-  app.listen(PORT, () => {
-    console.log(`CopyTrader Pro API running on port ${PORT}`);
-  });
+  console.error('[ERROR]', err.message, err.stack?.split('\n')[1]?.trim())
+  // En producción no exponer detalles internos (paths, SQL, stack) al cliente
+  const exposeDetails = process.env.NODE_ENV !== 'production'
+  res.status(500).json({ error: exposeDetails ? (err.message ?? 'Internal Server Error') : 'Internal Server Error' })
+})
+
+// Registrar webhook de Telegram si API_URL está configurada
+async function setupTelegramWebhook() {
+  const token  = process.env.TELEGRAM_BOT_TOKEN
+  const apiUrl = process.env.API_URL
+  if (!token || !apiUrl) return
+  const webhookUrl = `${apiUrl}/api/telegram/webhook`
+  const res  = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: webhookUrl, secret_token: telegramWebhookSecret() }),
+  })
+  const data = await res.json() as { ok: boolean; description?: string }
+  if (data.ok) console.log(`[Telegram] Webhook registrado → ${webhookUrl}`)
+  else         console.warn(`[Telegram] Webhook error: ${data.description}`)
 }
+setupTelegramWebhook().catch(err => console.warn('[Telegram] Setup falló:', err.message))
 
-bootstrap().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+// Iniciar worker de BullMQ
+startOrderWorker()
+console.log('BullMQ worker iniciado')
 
-export default app;
+app.listen(PORT, () => {
+  console.log(`CopyTrader Pro API corriendo en http://localhost:${PORT}`)
+  console.log(`Webhook URL: http://localhost:${PORT}/api/webhook/:webhookToken`)
+})

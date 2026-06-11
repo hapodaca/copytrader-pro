@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SyncTradePro | Cloud Copier</title>
+  <meta name="description" content="SyncTradePro: cloud trade copier with risk controls and execution journal." />
+
+  <!-- Open Graph -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://synctradepro.io/" />
+  <meta property="og:title"       content="SyncTradePro — Cloud Trade Copier" />
+  <meta property="og:description" content="Sincroniza cuentas, controla riesgo y escala tu ejecución desde un solo cockpit." />
+  <meta property="og:image"       content="https://synctradepro.io/og-image.png" />
+  <meta name="twitter:card"       content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --bg:#070b17;--card:#0e1733;--line:rgba(157,175,231,.24);--text:#ebefff;--muted:#a8b3d7;
+      --pri:#35d8c2;--pri2:#6de6ab;--ok:#99f5de;--bad:#ff9d9d
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Sora,sans-serif;background:radial-gradient(circle at 10% 0%,rgba(53,216,194,.2),transparent 46%),radial-gradient(circle at 85% 10%,rgba(109,230,171,.14),transparent 40%),var(--bg);color:var(--text);line-height:1.58}
+    a{text-decoration:none;color:inherit}
+    .wrap{width:min(1100px,92%);margin:auto}
+    html{scroll-padding-top:68px}
+    .top{position:sticky;top:0;z-index:20;background:rgba(7,11,23,.74);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+    .topin{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;flex-wrap:wrap}
+    .brand{display:flex;align-items:center;gap:10px;font-family:"Space Grotesk",sans-serif;font-weight:700}
+    .dot{width:28px;height:28px;border-radius:10px;background:conic-gradient(from 0deg,var(--pri),var(--pri2),#ff9f4a,var(--pri));box-shadow:0 0 20px rgba(53,216,194,.35)}
+    .nav{display:flex;gap:18px;color:var(--muted);font-size:.93rem}
+    .nav a:hover{color:var(--text)}
+    .tools{display:flex;align-items:center;gap:8px}
+    .lang{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+    .lang button{border:0;background:transparent;color:var(--muted);padding:6px 10px;cursor:pointer;font-size:.77rem;font-weight:700}
+    .lang button.on{background:rgba(53,216,194,.18);color:var(--text)}
+    .btn{border:0;border-radius:11px;padding:10px 14px;font-size:.88rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+    .btn.p{background:linear-gradient(120deg,var(--pri),var(--pri2));color:#042118}
+    .btn.g{border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text)}
+    .btn.acc{border:1px solid rgba(53,216,194,.4);background:rgba(53,216,194,.08);color:var(--pri);font-size:.83rem;padding:8px 13px}
+    /* Hamburger */
+    .hamburger{display:none;flex-direction:column;gap:5px;background:transparent;border:0;cursor:pointer;padding:4px}
+    .hamburger span{display:block;width:22px;height:2px;background:var(--muted);border-radius:2px;transition:.25s}
+    .hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+    .hamburger.open span:nth-child(2){opacity:0}
+    .hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+    .hero{padding:56px 0 28px}
+    .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px}
+    .pill{display:inline-flex;padding:6px 11px;border-radius:999px;border:1px solid rgba(53,216,194,.35);background:rgba(53,216,194,.12);color:#9cefe4;font-size:.78rem;margin-bottom:12px}
+    h1{font-family:"Space Grotesk",sans-serif;font-size:clamp(2rem,4vw,3.1rem);line-height:1.08;margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+    .chip{border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:.81rem;color:#c0cdef}
+    .panel{border:1px solid var(--line);background:linear-gradient(160deg,rgba(16,24,52,.92),rgba(10,16,35,.92));border-radius:18px;overflow:hidden}
+    .ptop{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+    .ok-badge{font-size:.74rem;border:1px solid rgba(53,216,194,.35);padding:4px 8px;border-radius:999px;color:#8debd8;background:rgba(53,216,194,.12);display:inline-flex;align-items:center;gap:5px}
+    .ok-dot{width:7px;height:7px;border-radius:50%;background:#35d8c2;animation:pulse 1.8s ease-in-out infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(53,216,194,.5)}50%{box-shadow:0 0 0 5px rgba(53,216,194,0)}}
+    .pbody{padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .box{border:1px solid var(--line);border-radius:12px;background:rgba(7,11,23,.35);padding:9px}
+    .chart{height:210px;border-radius:8px;background:linear-gradient(to right,rgba(157,175,231,.1) 1px,transparent 1px) 0 0/18px 18px,linear-gradient(to bottom,rgba(157,175,231,.1) 1px,transparent 1px) 0 0/18px 18px;position:relative;overflow:hidden}
+    .chart-svg{position:absolute;inset:0;width:100%;height:100%}
+    .chart-path{stroke-dasharray:600;stroke-dashoffset:600;animation:drawLine 2.2s ease forwards .3s}
+    .chart-fill{opacity:0;animation:fadeIn .4s ease forwards 2.2s}
+    @keyframes drawLine{to{stroke-dashoffset:0}}
+    @keyframes fadeIn{to{opacity:1}}
+    .orders h4{font-size:.82rem;color:#bacaf8;margin-bottom:6px}
+    .or{display:grid;grid-template-columns:1fr auto auto;gap:8px;font-size:.76rem;padding:6px 0;border-bottom:1px solid rgba(157,175,231,.12)}
+    .or:last-child{border-bottom:0}
+    .l{color:var(--ok)} .s{color:var(--bad)}
+    /* Brokers */
+    .brokers{padding:20px 0 32px;text-align:center}
+    .brokers p{color:var(--muted);font-size:.82rem;margin-bottom:14px;text-transform:uppercase;letter-spacing:.08em}
+    .broker-list{display:flex;align-items:center;justify-content:center;gap:28px;flex-wrap:wrap}
+    .broker-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:9px 16px;color:#c0cdef;font-size:.85rem;font-weight:600;background:rgba(14,23,51,.6)}
+    .broker-dot{width:9px;height:9px;border-radius:50%}
+    /* Steps */
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;position:relative}
+    .steps::before{content:'';position:absolute;top:22px;left:17%;right:17%;height:1px;background:linear-gradient(90deg,var(--pri),var(--pri2));opacity:.3;pointer-events:none}
+    .step{border:1px solid var(--line);border-radius:14px;background:rgba(14,23,51,.7);padding:16px;text-align:center}
+    .step-n{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--pri),var(--pri2));color:#042118;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:1rem;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+    .step h3{font-size:.95rem;margin-bottom:5px}
+    .sec{padding:44px 0}
+    .head{margin-bottom:14px}
+    .head h2{font-family:"Space Grotesk",sans-serif;font-size:clamp(1.36rem,2.3vw,2rem);margin-bottom:6px}
+    .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(16,25,55,.9),rgba(9,15,30,.9));padding:14px}
+    .card h3{margin-bottom:8px;font-size:1rem}
+    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .num{font-family:"Space Grotesk",sans-serif;font-size:1.7rem;color:#9af5df;margin-bottom:3px}
+    .pricing{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .pbox{border:1px solid var(--line);border-radius:14px;background:rgba(13,22,48,.9);padding:14px;position:relative}
+    .pbox.popular{border-color:rgba(53,216,194,.5);background:linear-gradient(180deg,rgba(16,34,62,.95),rgba(10,22,45,.95))}
+    .pop-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:linear-gradient(120deg,var(--pri),var(--pri2));color:#042118;font-size:.72rem;font-weight:700;padding:3px 12px;border-radius:999px;white-space:nowrap}
+    .price{font-family:"Space Grotesk",sans-serif;font-size:1.85rem}
+    .pbox ul{list-style:none;display:grid;gap:7px;margin:10px 0 13px;color:#cad6fa;font-size:.87rem}
+    .pbox li::before{content:"✓";color:var(--pri2);margin-right:8px}
+    .faq{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .q{border:1px solid var(--line);border-radius:14px;background:rgba(13,22,48,.86);padding:14px}
+    .q h3{margin-bottom:7px;font-size:1rem}
+    .cta{margin-top:20px;border:1px solid rgba(109,230,171,.35);border-radius:16px;background:linear-gradient(92deg,rgba(11,34,40,.88),rgba(15,34,62,.88));padding:18px;display:grid;grid-template-columns:1.2fr auto;gap:10px;align-items:center}
+    footer{padding:26px 0 34px;color:#93a5d8;font-size:.82rem}
+    .foot{border-top:1px solid var(--line);padding-top:14px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .reveal{opacity:0;transform:translateY(14px);transition:.42s ease}
+    .reveal.show{opacity:1;transform:translateY(0)}
+    @media(max-width:980px){.grid,.cards,.pricing,.faq,.cta,.steps{grid-template-columns:1fr}.pbody{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.steps::before{display:none}}
+    @media(max-width:760px){
+      .nav{display:none;width:100%;flex-direction:column;gap:9px;padding:10px 0}
+      .nav.show{display:flex}
+      .hamburger{display:flex}
+      .stats{grid-template-columns:1fr}
+      .topin{flex-wrap:wrap}
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap topin">
+      <a class="brand" href="#home"><img src="/favicon.svg" alt="" style="width:28px;height:28px;border-radius:8px;flex-shrink:0"/><span>SyncTradePro</span></a>
+      <nav class="nav" id="nav">
+        <a href="#how" data-t="nav_how">Cómo funciona</a>
+        <a href="#features" data-t="nav_product">Producto</a>
+        <a href="#pricing" data-t="nav_pricing">Precios</a>
+        <a href="#faq" data-t="nav_faq">FAQ</a>
+      </nav>
+      <div class="tools">
+        <div class="lang">
+          <button class="on" data-lang="es">ES</button>
+          <button data-lang="en">EN</button>
+        </div>
+        <a href="https://app.synctradepro.io" class="btn acc" data-t="nav_login">Acceder →</a>
+        <a href="https://app.synctradepro.io" class="btn p" data-t="nav_register">Registrarse</a>
+        <button class="hamburger" id="hamburger" aria-label="Menú">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="home">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap grid">
+        <div class="reveal">
+          <span class="pill" data-t="hero_badge">Cloud Trade Copier + Risk Control</span>
+          <h1 data-t="hero_title">Sincroniza cuentas, controla riesgo y escala tu ejecución desde un solo cockpit.</h1>
+          <p class="muted" data-t="hero_desc">SyncTradePro conecta cuentas líderes y seguidoras en tiempo real para copiar operaciones con reglas claras y trazabilidad completa.</p>
+          <div class="row">
+            <a href="https://app.synctradepro.io" class="btn p" data-t="hero_start">Empezar gratis →</a>
+            <a href="#how" class="btn g" data-t="hero_how">Ver cómo funciona</a>
+          </div>
+          <div class="chips">
+            <span class="chip" data-t="chip_1">Ejecución cloud 24/7</span>
+            <span class="chip" data-t="chip_2">Reglas por cuenta y por grupo</span>
+            <span class="chip" data-t="chip_3">Bitácora y auditoría</span>
+          </div>
+        </div>
+        <article class="panel reveal">
+          <div class="ptop">
+            <strong data-t="panel_title">Cockpit en vivo</strong>
+            <span class="ok-badge">
+              <span class="ok-dot"></span>
+              <span data-t="panel_ok">Conexión estable</span>
+            </span>
+          </div>
+          <div class="pbody">
+            <div class="box">
+              <div class="chart">
+                <svg class="chart-svg" viewBox="0 0 200 160" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(53,216,194,.3)"/>
+                      <stop offset="100%" stop-color="rgba(53,216,194,0)"/>
+                    </linearGradient>
+                  </defs>
+                  <path class="chart-fill" d="M0,128 L20,118 L40,110 L60,99 L80,105 L100,86 L120,70 L140,57 L160,42 L180,28 L200,24 L200,160 L0,160 Z"
+                    fill="url(#fillGrad)"/>
+                  <path class="chart-path" d="M0,128 L20,118 L40,110 L60,99 L80,105 L100,86 L120,70 L140,57 L160,42 L180,28 L200,24"
+                    fill="none" stroke="rgba(109,230,171,.95)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+            <div class="box orders">
+              <h4 data-t="panel_orders">Órdenes (Bitácora)</h4>
+              <div class="or"><span>MNQZ6</span><span class="l" data-t="long">Long</span><span>+152.6</span></div>
+              <div class="or"><span>ESZ6</span><span class="s" data-t="short">Short</span><span>+87.2</span></div>
+              <div class="or"><span>NQH7</span><span class="l" data-t="long">Long</span><span>+42.8</span></div>
+              <div class="or"><span>RTYH7</span><span class="s" data-t="short">Short</span><span>-18.4</span></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Brokers -->
+    <section class="brokers">
+      <div class="wrap">
+        <p data-t="brokers_label">Conecta con tu plataforma</p>
+        <div class="broker-list">
+          <div class="broker-item"><span class="broker-dot" style="background:#2563eb"></span>Tradovate</div>
+          <div class="broker-item" style="opacity:.6"><span class="broker-dot" style="background:#f59e0b"></span>NinjaTrader <small style="font-size:.7rem;color:var(--muted)">(soon)</small></div>
+          <div class="broker-item"><span class="broker-dot" style="background:#22c55e"></span>Paper Trading</div>
+          <div class="broker-item" style="opacity:.6"><span class="broker-dot" style="background:#6b7280"></span>Rithmic <small style="font-size:.7rem;color:var(--muted)">(soon)</small></div>
+          <div class="broker-item"><span class="broker-dot" style="background:#2962ff"></span>TradingView</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="sec">
+      <div class="wrap stats">
+        <article class="card reveal"><p class="num">99.9%</p><p class="muted" data-t="s1">Disponibilidad de infraestructura</p></article>
+        <article class="card reveal"><p class="num">&lt;120ms</p><p class="muted" data-t="s2">Latencia objetivo de sincronización</p></article>
+        <article class="card reveal"><p class="num">24/7</p><p class="muted" data-t="s3">Monitoreo y alertas operativas</p></article>
+        <article class="card reveal"><p class="num">360°</p><p class="muted" data-t="s4">Visibilidad por cuenta y grupo</p></article>
+      </div>
+    </section>
+
+    <!-- Cómo funciona -->
+    <section class="sec" id="how">
+      <div class="wrap">
+        <div class="head reveal">
+          <h2 data-t="how_title">Cómo funciona</h2>
+          <p class="muted" data-t="how_desc">Tres pasos para operar en sincronía desde el día uno.</p>
+        </div>
+        <div class="steps">
+          <div class="step reveal">
+            <div class="step-n">1</div>
+            <h3 data-t="step1_t">Conecta tu broker</h3>
+            <p class="muted" style="font-size:.85rem" data-t="step1_d">Enlaza Tradovate, NinjaTrader u otras cuentas en minutos.</p>
+          </div>
+          <div class="step reveal">
+            <div class="step-n">2</div>
+            <h3 data-t="step2_t">Define tus reglas</h3>
+            <p class="muted" style="font-size:.85rem" data-t="step2_d">Configura sesiones, drawdown, tamaño de posición y horarios.</p>
+          </div>
+          <div class="step reveal">
+            <div class="step-n">3</div>
+            <h3 data-t="step3_t">Opera con control</h3>
+            <p class="muted" style="font-size:.85rem" data-t="step3_d">Las señales se copian automáticamente. Tú monitoreás desde el cockpit.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="sec" id="features">
+      <div class="wrap">
+        <div class="head reveal">
+          <h2 data-t="f_title">Todo en un solo sistema</h2>
+          <p class="muted" data-t="f_desc">Menos fricción operacional y más control real sobre ejecución y riesgo.</p>
+        </div>
+        <div class="cards">
+          <article class="card reveal"><h3 data-t="f1_t">TC Copier</h3><p class="muted" data-t="f1_d">Copia líder-seguidor con sizing por ratio, lote fijo o porcentaje.</p></article>
+          <article class="card reveal"><h3 data-t="f2_t">Risk Engine</h3><p class="muted" data-t="f2_d">Límites por drawdown, sesiones, entradas máximas y pausas automáticas.</p></article>
+          <article class="card reveal"><h3 data-t="f3_t">Analyzer + Journal</h3><p class="muted" data-t="f3_d">ROI, win-rate, profit factor y trazabilidad de cada evento.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing -->
+    <section class="sec" id="pricing">
+      <div class="wrap">
+        <div class="head reveal">
+          <h2 data-t="p_title">Precios simples para escalar</h2>
+          <p class="muted" data-t="p_desc">Empieza liviano y sube de plan cuando crezcan tus cuentas conectadas.</p>
+        </div>
+        <div class="pricing">
+          <article class="pbox reveal">
+            <p data-t="p1_n">Free</p><p class="price">$0</p><p class="muted" data-t="p1_p">/ siempre · 1 cuenta</p>
+            <ul><li data-t="p1_b1">1 copy group</li><li data-t="p1_b2">Señales via webhook</li><li data-t="p1_b3">Paper trading ilimitado</li></ul>
+            <a href="https://app.synctradepro.io" class="btn g" data-t="p1_cta">Empezar gratis</a>
+          </article>
+          <article class="pbox reveal">
+            <p data-t="p2_n">Standard</p><p class="price">$20</p><p class="muted" data-t="p2_p">/ mes · 5 cuentas</p>
+            <ul><li data-t="p2_b1">Señales TradingView</li><li data-t="p2_b2">3 copy groups</li><li data-t="p2_b3">Reglas de riesgo</li></ul>
+            <a href="https://app.synctradepro.io" class="btn g" data-t="p2_cta">Elegir Standard</a>
+          </article>
+          <article class="pbox popular reveal">
+            <span class="pop-badge" data-t="pop_badge">Más popular</span>
+            <p data-t="p3_n">Pro</p><p class="price">$49</p><p class="muted" data-t="p3_p">/ mes · 10 cuentas</p>
+            <ul><li data-t="p3_b1">Copy groups ilimitados</li><li data-t="p3_b2">Reglas de riesgo avanzadas</li><li data-t="p3_b3">Email + Telegram</li></ul>
+            <a href="https://app.synctradepro.io" class="btn p" data-t="p3_cta">Elegir Pro</a>
+          </article>
+          <article class="pbox reveal" style="border-color:rgba(139,92,246,.5)">
+            <p data-t="p4_n">Pro+</p><p class="price" style="background:linear-gradient(120deg,#a78bfa,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent">$99</p><p class="muted" data-t="p4_p">/ mes · cuentas ilimitadas</p>
+            <ul><li data-t="p4_b1">Multi-usuario (5 traders)</li><li data-t="p4_b2">API access</li><li data-t="p4_b3">Reportes avanzados</li></ul>
+            <a href="https://app.synctradepro.io" class="btn g" style="border-color:rgba(139,92,246,.5);color:#a78bfa" data-t="p4_cta">Elegir Pro+</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="sec" id="faq">
+      <div class="wrap">
+        <div class="head reveal"><h2 data-t="faq_title">Preguntas frecuentes</h2></div>
+        <div class="faq">
+          <article class="q reveal"><h3 data-t="q1">¿Necesito VPS o software local?</h3><p class="muted" data-t="a1">No. SyncTradePro corre en la nube y se gestiona desde navegador.</p></article>
+          <article class="q reveal"><h3 data-t="q2">¿Incluye controles de riesgo por cuenta?</h3><p class="muted" data-t="a2">Sí. Límite por sesión, drawdown, entradas y pausas de seguridad.</p></article>
+          <article class="q reveal"><h3 data-t="q3">¿Con qué brokers es compatible?</h3><p class="muted" data-t="a3">Tradovate disponible hoy. NinjaTrader y Rithmic próximamente.</p></article>
+          <article class="q reveal"><h3 data-t="q4">¿Cómo se manejan las señales?</h3><p class="muted" data-t="a4">Vía webhook desde TradingView, NinjaTrader o panel manual. Sin latencia adicional.</p></article>
+        </div>
+        <div class="cta reveal" id="cta">
+          <div>
+            <h3 data-t="cta_t">Lanza SyncTradePro en tu operación esta semana.</h3>
+            <p class="muted" data-t="cta_d">Te ayudamos a conectar cuentas, definir reglas y operar con más control.</p>
+          </div>
+          <div class="row" style="margin:0;">
+            <a class="btn p" data-mail="demo" href="mailto:support@synctradepro.io?subject=Solicitud%20Demo%20SyncTradePro" data-t="cta_demo">Solicitar Demo</a>
+            <a class="btn g" data-mail="support" href="mailto:support@synctradepro.io?subject=Soporte%20SyncTradePro" data-t="cta_support">Contactar Soporte</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <p>© 2026 SyncTradePro. All rights reserved.</p>
+      <p data-t="risk">Futures y forex implican riesgo. Opera con capital que puedas asumir perder.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Hamburger
+    const hbg = document.getElementById('hamburger');
+    const nav = document.getElementById('nav');
+    hbg.addEventListener('click', () => {
+      hbg.classList.toggle('open');
+      nav.classList.toggle('show');
+    });
+
+    // i18n
+    const I18N = {
+      es: {
+        nav_how:'Cómo funciona',nav_product:'Producto',nav_pricing:'Precios',nav_faq:'FAQ',nav_register:'Registrarse',nav_login:'Acceder →',
+        hero_badge:'Cloud Trade Copier + Risk Control',
+        hero_title:'Sincroniza cuentas, controla riesgo y escala tu ejecución desde un solo cockpit.',
+        hero_desc:'SyncTradePro conecta cuentas líderes y seguidoras en tiempo real para copiar operaciones con reglas claras y trazabilidad completa.',
+        hero_start:'Empezar gratis →',hero_how:'Ver cómo funciona',
+        chip_1:'Ejecución cloud 24/7',chip_2:'Reglas por cuenta y por grupo',chip_3:'Bitácora y auditoría',
+        panel_title:'Cockpit en vivo',panel_ok:'Conexión estable',panel_orders:'Órdenes (Bitácora)',long:'Long',short:'Short',
+        brokers_label:'Conecta con tu plataforma',
+        s1:'Disponibilidad de infraestructura',s2:'Latencia objetivo de sincronización',s3:'Monitoreo y alertas operativas',s4:'Visibilidad por cuenta y grupo',
+        how_title:'Cómo funciona',how_desc:'Tres pasos para operar en sincronía desde el día uno.',
+        step1_t:'Conecta tu broker',step1_d:'Enlaza Tradovate, NinjaTrader u otras cuentas en minutos.',
+        step2_t:'Define tus reglas',step2_d:'Configura sesiones, drawdown, tamaño de posición y horarios.',
+        step3_t:'Opera con control',step3_d:'Las señales se copian automáticamente. Tú monitoreás desde el cockpit.',
+        f_title:'Todo en un solo sistema',f_desc:'Menos fricción operacional y más control real sobre ejecución y riesgo.',
+        f1_t:'TC Copier',f1_d:'Copia líder-seguidor con sizing por ratio, lote fijo o porcentaje.',
+        f2_t:'Risk Engine',f2_d:'Límites por drawdown, sesiones, entradas máximas y pausas automáticas.',
+        f3_t:'Analyzer + Journal',f3_d:'ROI, win-rate, profit factor y trazabilidad de cada evento.',
+        p_title:'Precios simples para escalar',p_desc:'Empieza liviano y sube de plan cuando crezcan tus cuentas conectadas.',
+        pop_badge:'Más popular',
+        p1_n:'Free',p1_p:'/ siempre · 1 cuenta',p1_b1:'1 copy group',p1_b2:'Señales vía webhook',p1_b3:'Paper trading ilimitado',p1_cta:'Empezar gratis',
+        p2_n:'Standard',p2_p:'/ mes · 5 cuentas',p2_b1:'Señales TradingView',p2_b2:'3 copy groups',p2_b3:'Reglas de riesgo',p2_cta:'Elegir Standard',
+        p3_n:'Pro',p3_p:'/ mes · 10 cuentas',p3_b1:'Copy groups ilimitados',p3_b2:'Reglas de riesgo avanzadas',p3_b3:'Email + Telegram',p3_cta:'Elegir Pro',
+        p4_n:'Pro+',p4_p:'/ mes · cuentas ilimitadas',p4_b1:'Multi-usuario (5 traders)',p4_b2:'API access',p4_b3:'Reportes avanzados',p4_cta:'Elegir Pro+',
+        faq_title:'Preguntas frecuentes',
+        q1:'¿Necesito VPS o software local?',a1:'No. SyncTradePro corre en la nube y se gestiona desde navegador.',
+        q2:'¿Incluye controles de riesgo por cuenta?',a2:'Sí. Límite por sesión, drawdown, entradas y pausas de seguridad.',
+        q3:'¿Con qué brokers es compatible?',a3:'Tradovate disponible hoy. NinjaTrader y Rithmic próximamente.',
+        q4:'¿Cómo se manejan las señales?',a4:'Vía webhook desde TradingView, NinjaTrader o panel manual. Sin latencia adicional.',
+        cta_t:'Lanza SyncTradePro en tu operación esta semana.',
+        cta_d:'Te ayudamos a conectar cuentas, definir reglas y operar con más control.',
+        cta_demo:'Solicitar Demo',cta_support:'Contactar Soporte',
+        risk:'Futures y forex implican riesgo. Opera con capital que puedas asumir perder.'
+      },
+      en: {
+        nav_how:'How it works',nav_product:'Product',nav_pricing:'Pricing',nav_faq:'FAQ',nav_register:'Register',nav_login:'Log in →',
+        hero_badge:'Cloud Trade Copier + Risk Control',
+        hero_title:'Sync accounts, control risk, and scale execution from one cockpit.',
+        hero_desc:'SyncTradePro connects leader and follower accounts in real time so you can copy trades with clear rules and full traceability.',
+        hero_start:'Get started free →',hero_how:'See how it works',
+        chip_1:'24/7 cloud execution',chip_2:'Rules by account and group',chip_3:'Execution log and audit trail',
+        panel_title:'Live cockpit',panel_ok:'Stable connection',panel_orders:'Orders (Journal)',long:'Long',short:'Short',
+        brokers_label:'Connect with your platform',
+        s1:'Infrastructure availability',s2:'Target sync latency',s3:'Operational monitoring and alerts',s4:'Visibility by account and group',
+        how_title:'How it works',how_desc:'Three steps to trade in sync from day one.',
+        step1_t:'Connect your broker',step1_d:'Link Tradovate, NinjaTrader or other accounts in minutes.',
+        step2_t:'Define your rules',step2_d:'Set sessions, drawdown, position size, and schedule filters.',
+        step3_t:'Trade with control',step3_d:'Signals copy automatically. You monitor from the cockpit.',
+        f_title:'Everything in one system',f_desc:'Less operational friction and stronger control over execution and risk.',
+        f1_t:'TC Copier',f1_d:'Leader-to-follower copying with ratio, fixed lot, or percentage sizing.',
+        f2_t:'Risk Engine',f2_d:'Drawdown limits, session filters, max entries, and auto-pauses.',
+        f3_t:'Analyzer + Journal',f3_d:'ROI, win rate, profit factor, and full traceability for every event.',
+        p_title:'Simple pricing to scale',p_desc:'Start lean and upgrade as your connected accounts grow.',
+        pop_badge:'Most popular',
+        p1_n:'Free',p1_p:'/ forever · 1 account',p1_b1:'1 copy group',p1_b2:'Webhook signals',p1_b3:'Unlimited paper trading',p1_cta:'Get started free',
+        p2_n:'Standard',p2_p:'/ month · 5 accounts',p2_b1:'TradingView signals',p2_b2:'3 copy groups',p2_b3:'Risk rules',p2_cta:'Choose Standard',
+        p3_n:'Pro',p3_p:'/ month · 10 accounts',p3_b1:'Unlimited copy groups',p3_b2:'Advanced risk rules',p3_b3:'Email + Telegram',p3_cta:'Choose Pro',
+        p4_n:'Pro+',p4_p:'/ month · unlimited accounts',p4_b1:'Multi-user (5 traders)',p4_b2:'API access',p4_b3:'Advanced reports',p4_cta:'Choose Pro+',
+        faq_title:'Frequently asked questions',
+        q1:'Do I need a VPS or local software?',a1:'No. SyncTradePro runs in the cloud and is managed from your browser.',
+        q2:'Do you include per-account risk controls?',a2:'Yes. Session filters, drawdown limits, max entries, and safety pauses.',
+        q3:'Which brokers are supported?',a3:'Tradovate available today. NinjaTrader and Rithmic coming soon.',
+        q4:'How are signals handled?',a4:'Via webhook from TradingView, NinjaTrader or manual panel. No extra latency.',
+        cta_t:'Launch SyncTradePro in your operation this week.',
+        cta_d:'We help you connect accounts, define rules, and trade with more control.',
+        cta_demo:'Request Demo',cta_support:'Contact Support',
+        risk:'Futures and forex involve risk. Trade only with capital you can afford to lose.'
+      }
+    };
+
+    function applyLang(lang) {
+      const d = I18N[lang] || I18N.es;
+      document.documentElement.lang = lang;
+      document.querySelectorAll('[data-t]').forEach(el => {
+        const k = el.getAttribute('data-t');
+        if (d[k]) el.textContent = d[k];
+      });
+      document.querySelectorAll('[data-lang]').forEach(btn =>
+        btn.classList.toggle('on', btn.getAttribute('data-lang') === lang)
+      );
+      const demo = document.querySelector('[data-mail="demo"]');
+      const support = document.querySelector('[data-mail="support"]');
+      if (demo) demo.href = `mailto:support@synctradepro.io?subject=${encodeURIComponent(lang==='en' ? 'Demo request SyncTradePro' : 'Solicitud de demo SyncTradePro')}`;
+      if (support) support.href = `mailto:support@synctradepro.io?subject=${encodeURIComponent(lang==='en' ? 'Support SyncTradePro' : 'Soporte SyncTradePro')}`;
+      localStorage.setItem('stp_lang', lang);
+    }
+
+    document.querySelectorAll('[data-lang]').forEach(btn =>
+      btn.addEventListener('click', () => applyLang(btn.getAttribute('data-lang')))
+    );
+    const saved = localStorage.getItem('stp_lang');
+    const auto = navigator.language.toLowerCase().startsWith('en') ? 'en' : 'es';
+    applyLang(saved || auto || 'es');
+
+    // Scroll reveal
+    const ob = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('show'); ob.unobserve(e.target); }
+      });
+    }, { threshold: .12 });
+    document.querySelectorAll('.reveal').forEach(el => ob.observe(el));
+  </script>
+</body>
+</html>

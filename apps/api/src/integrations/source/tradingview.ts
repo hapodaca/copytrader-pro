@@ -1,8 +1,8 @@
-import { Request } from 'express';
-import { z } from 'zod';
-import { SignalSource, ParsedSignal } from './SignalSource';
+import { Request } from 'express'
+import { z } from 'zod'
+import { SignalSource, ParsedSignal } from './SignalSource'
 
-const TradingViewPayloadSchema = z.object({
+const TradingViewPayload = z.object({
   secret: z.string(),
   symbol: z.string().min(1),
   action: z.enum(['BUY', 'SELL', 'CLOSE_LONG', 'CLOSE_SHORT']),
@@ -11,27 +11,27 @@ const TradingViewPayloadSchema = z.object({
   strategy: z.string().optional(),
   timeframe: z.string().optional(),
   timestamp: z.string().optional(),
-});
+})
 
 export class TradingViewSource implements SignalSource {
-  readonly sourceName = 'tradingview';
+  readonly sourceName = 'tradingview'
 
   parseSignal(payload: unknown): ParsedSignal {
-    const parsed = TradingViewPayloadSchema.parse(payload);
+    const data = TradingViewPayload.parse(payload)
     return {
-      symbol: parsed.symbol,
-      action: parsed.action,
-      price: parsed.price,
-      contracts: parsed.contracts,
-      strategy: parsed.strategy,
-      timeframe: parsed.timeframe,
-    };
+      symbol: data.symbol,
+      action: data.action,
+      price: data.price,
+      contracts: data.contracts,
+      strategy: data.strategy,
+      timeframe: data.timeframe,
+    }
   }
 
   validateAuth(req: Request): boolean {
-    const body = req.body;
-    return body?.secret === process.env.WEBHOOK_SECRET;
+    const body = req.body as Record<string, unknown>
+    return body?.secret === process.env.WEBHOOK_SECRET
   }
 }
 
-export const tradingViewSource = new TradingViewSource();
+export const tradingViewSource = new TradingViewSource()

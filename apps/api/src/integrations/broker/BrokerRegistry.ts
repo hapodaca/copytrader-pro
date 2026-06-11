@@ -1,27 +1,17 @@
-import { BrokerAdapter } from './BrokerAdapter';
-import { TradovateAdapter } from './tradovate/TradovateAdapter';
+import { BrokerAdapter } from './BrokerAdapter'
 
-class BrokerRegistryClass {
-  private adapters: Map<string, BrokerAdapter> = new Map();
+const registry = new Map<string, BrokerAdapter>()
 
-  register(adapter: BrokerAdapter): void {
-    this.adapters.set(adapter.brokerName, adapter);
-  }
-
+export const BrokerRegistry = {
+  register(adapter: BrokerAdapter) {
+    registry.set(adapter.brokerName, adapter)
+  },
   get(brokerName: string): BrokerAdapter {
-    const adapter = this.adapters.get(brokerName);
-    if (!adapter) {
-      throw new Error(`Broker adapter not found: ${brokerName}`);
-    }
-    return adapter;
-  }
-
+    const adapter = registry.get(brokerName)
+    if (!adapter) throw new Error(`Broker no registrado: ${brokerName}`)
+    return adapter
+  },
   has(brokerName: string): boolean {
-    return this.adapters.has(brokerName);
-  }
+    return registry.has(brokerName)
+  },
 }
-
-export const BrokerRegistry = new BrokerRegistryClass();
-
-// Register MVP adapters
-BrokerRegistry.register(new TradovateAdapter());

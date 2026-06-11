@@ -1,131 +1,70 @@
-import prisma from '../../../db/client';
+import axios from 'axios'
+import { prisma } from '../../../db/client'
+import { Account } from '@prisma/client'
 
-export function getBaseUrl(environment: string): string {
-  return environment === 'live'
-    ? 'https://live.tradovateapi.com/v1'
-    : 'https://demo.tradovateapi.com/v1';
+const BASE_URLS = {
+  demo: 'https://demo.tradovateapi.com/v1',
+  live: 'https://live.tradovateapi.com/v1',
 }
 
-export function getOAuthAuthorizeUrl(): string {
-  const clientId = process.env.TRADOVATE_CLIENT_ID;
-  const redirectUri = process.env.TRADOVATE_REDIRECT_URI;
-  return `https://live-api-d.tradovate.com/auth/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri!)}`;
+const OAUTH_URLS = {
+  authorize: 'https://live-api-d.tradovate.com/auth/oauth/authorize',
+  token: 'https://live-api-d.tradovate.com/auth/oauthtoken',
 }
 
-export async function exchangeCodeForToken(code: string): Promise<{
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  userId: number;
+export function getBaseUrl(environment: string) {
+  return environment === 'live' ? BASE_URLS.live : BASE_URLS.demo
+}
+
+export function buildOAuthUrl(): string {
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.TRADOVATE_CLIENT_ID!,
+    redirect_uri: process.env.TRADOVATE_REDIRECT_URI!,
+  })
+  return `${OAUTH_URLS.authorize}?${params}`
+}
+
+export async function exchangeCodeForTokens(code: string): Promise<{
+  accessToken: string
+  refreshToken: string
+  userId: string
 }> {
-  const response = await fetch('https://live-api-d.tradovate.com/auth/oauthtoken', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      client_id: process.env.TRADOVATE_CLIENT_ID,
-      client_secret: process.env.TRADOVATE_CLIENT_SECRET,
-      redirect_uri: process.env.TRADOVATE_REDIRECT_URI,
-      code,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Tradovate OAuth token exchange failed: ${response.status}`);
-  }
-
-  const data = (await response.json()) as Record<string, any>;
+  const { data } = await axios.post(OAUTH_URLS.token, {
+    grant_type: 'authorization_code',
+    client_id: process.env.TRADOVATE_CLIENT_ID,
+    client_secret: process.env.TRADOVATE_CLIENT_SECRET,
+    redirect_uri: process.env.TRADOVATE_REDIRECT_URI,
+    code,
+  })
   return {
-    accessToken: data.access_token || data.accessToken,
-    refreshToken: data.refresh_token || data.refreshToken,
-    expiresIn: data.expires_in || data.expiresIn || 7200,
-    userId: data.userId || data.user_id,
-  };
-}
-
-export class TokenManager {
-  private refreshTimers: Map<string, NodeJS.Timeout> = new Map();
-
-  async ensureValidToken(account: {
-    id: string;
-    environment: string;
-    accessToken: string | null;
-    refreshToken: string | null;
-    tokenExpiry: Date | null;
-  }): Promise<string> {
-    if (!account.accessToken || !account.tokenExpiry) {
-      throw new Error(`Account ${account.id} has no access token. Please reconnect via OAuth.`);
-    }
-
-    const now = new Date();
-    const fiveMinFromNow = new Date(now.getTime() + 5 * 60 * 1000);
-
-    if (account.tokenExpiry > fiveMinFromNow) {
-      return account.accessToken;
-    }
-
-    return this.refreshAccessToken(account);
-  }
-
-  private async refreshAccessToken(account: {
-    id: string;
-    environment: string;
-    refreshToken: string | null;
-  }): Promise<string> {
-    if (!account.refreshToken) {
-      throw new Error(`Account ${account.id} has no refresh token`);
-    }
-
-    const baseUrl = getBaseUrl(account.environment);
-    const response = await fetch(`${baseUrl}/auth/renewaccesstoken`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: account.refreshToken }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token refresh failed for account ${account.id}: ${response.status}`);
-    }
-
-    const data = (await response.json()) as Record<string, any>;
-    const newAccessToken = data.accessToken || data.access_token;
-    const expiresIn = data.expiresIn || data.expires_in || 7200;
-    const tokenExpiry = new Date(Date.now() + expiresIn * 1000);
-
-    await prisma.account.update({
-      where: { id: account.id },
-      data: { accessToken: newAccessToken, tokenExpiry },
-    });
-
-    return newAccessToken;
-  }
-
-  setupAutoRefresh(accountId: string, environment: string): void {
-    // Clear existing timer
-    this.clearAutoRefresh(accountId);
-
-    // Refresh every 55 minutes
-    const timer = setInterval(async () => {
-      try {
-        const account = await prisma.account.findUnique({ where: { id: accountId } });
-        if (account && account.isActive) {
-          await this.ensureValidToken(account);
-        }
-      } catch (err) {
-        console.error(`Auto-refresh failed for account ${accountId}:`, (err as Error).message);
-      }
-    }, 55 * 60 * 1000);
-
-    this.refreshTimers.set(accountId, timer);
-  }
-
-  clearAutoRefresh(accountId: string): void {
-    const timer = this.refreshTimers.get(accountId);
-    if (timer) {
-      clearInterval(timer);
-      this.refreshTimers.delete(accountId);
-    }
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    userId: data.user_id,
   }
 }
 
-export const tokenManager = new TokenManager();
+export async function refreshAccessToken(account: Account): Promise<string> {
+  const baseUrl = getBaseUrl(account.environment)
+  const { data } = await axios.post(`${baseUrl}/auth/renewaccesstoken`, null, {
+    headers: { Authorization: `Bearer ${account.refreshToken}` },
+  })
+  const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000) // 1 hora
+  await prisma.account.update({
+    where: { id: account.id },
+    data: { accessToken: data.accessToken, tokenExpiry },
+  })
+  return data.accessToken
+}
+
+export async function ensureValidToken(account: Account): Promise<string> {
+  if (!account.accessToken) throw new Error(`Cuenta ${account.id} sin token`)
+  const fiveMinutes = 5 * 60 * 1000
+  const isExpiringSoon = account.tokenExpiry
+    ? account.tokenExpiry.getTime() - Date.now() < fiveMinutes
+    : true
+  if (isExpiringSoon) {
+    return refreshAccessToken(account)
+  }
+  return account.accessToken
+}

@@ -1,0 +1,3 @@
+-- AddColumn sl/tp to Order table
+ALTER TABLE "Order" ADD COLUMN "sl" DOUBLE PRECISION;
+ALTER TABLE "Order" ADD COLUMN "tp" DOUBLE PRECISION;
